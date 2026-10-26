@@ -12,3 +12,4 @@ local-data/
 
 # Generated sensitive model-analysis drafts (never commit)
 analysis-cache/
+decisions-cache/

@@ -1,0 +1,1144 @@
+const {test} = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+
+// Execute the entire production browser script. This small DOM implements only
+// browser primitives; it deliberately contains no catalog or selection logic.
+const source = fs.readFileSync(path.join(__dirname, '../graph_view.js'), 'utf8');
+const html = fs.readFileSync(path.join(__dirname, '../graph_view.html'), 'utf8');
+const stateKey = 'context-graph-mind-selection';
+const clone = value => JSON.parse(JSON.stringify(value));
+const deferred = () => {
+  let resolve, reject;
+  const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
+  return {promise, resolve, reject};
+};
+
+class Element {
+  constructor(tag, document) {
+    this.tagName = tag.toUpperCase(); this.document = document;
+    this.children = []; this.parentElement = null; this.dataset = {};
+    this.attributes = new Map(); this.listeners = new Map(); this._text = '';
+    this.value = ''; this.disabled = false; this.hidden = false; this.checked = false;
+    this.className = ''; this.offsetLeft = this.offsetTop = 0;
+    this.scrollTop = this.scrollLeft = 0;
+    this.offsetWidth = this.clientWidth = 240; this.offsetHeight = this.clientHeight = 100;
+    this.style = {setProperty(name, value) { this[name] = value; }, removeProperty(name) { delete this[name]; }};
+    this.classList = {
+      contains: name => this.className.split(/\s+/).includes(name),
+      add: (...names) => { this.className = [...new Set([...this.className.split(/\s+/).filter(Boolean), ...names])].join(' '); },
+      remove: (...names) => { this.className = this.className.split(/\s+/).filter(name => !names.includes(name)).join(' '); },
+      toggle: (name, force) => {
+        const present = force === undefined ? !this.classList.contains(name) : force;
+        this.classList[present ? 'add' : 'remove'](name); return present;
+      },
+    };
+  }
+  get textContent() { return this._text + this.children.map(child => child.textContent).join(''); }
+  set textContent(value) { this._text = String(value); this.children = []; }
+  get options() { return this.children.flatMap(child => child.tagName === 'OPTION' ? [child] : child.tagName === 'OPTGROUP' ? child.options : []); }
+  get offsetParent() { return this.parentElement; }
+  append(...children) {
+    for (const child of children) { child.parentElement = this; this.children.push(child); }
+  }
+  replaceChildren(...children) {
+    this.children.forEach(child => { child.parentElement = null; });
+    this.children = []; this._text = ''; this.append(...children);
+  }
+  remove() {
+    if (this.parentElement) this.parentElement.children = this.parentElement.children.filter(child => child !== this);
+    this.parentElement = null;
+  }
+  setAttribute(name, value) {
+    value = String(value); this.attributes.set(name, value);
+    if (name === 'class') this.className = value;
+    if (name === 'id') this.id = value;
+    if (name.startsWith('data-')) this.dataset[name.slice(5).replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())] = value;
+  }
+  getAttribute(name) { return name === 'class' ? this.className : this.attributes.get(name) ?? null; }
+  addEventListener(type, handler) {
+    if (!this.listeners.has(type)) this.listeners.set(type, []);
+    this.listeners.get(type).push(handler);
+  }
+  removeEventListener(type, handler) {
+    this.listeners.set(type, (this.listeners.get(type) || []).filter(item => item !== handler));
+  }
+  dispatchEvent(event) {
+    event.target ||= this;
+    for (const handler of this.listeners.get(event.type) || []) handler(event);
+    return true;
+  }
+  click() { if (!this.disabled) { this.focus(); this.dispatchEvent({type: 'click'}); } }
+  focus() { this.document.activeElement = this; }
+  scrollIntoView(options) { this.document.lastScrolled=this;this.document.lastScrollOptions=options; }
+  getBoundingClientRect() {
+    let left=0,top=0;
+    for(let node=this;node;node=node.parentElement) {left+=node.offsetLeft;top+=node.offsetTop;if(node.parentElement){left-=node.parentElement.scrollLeft;top-=node.parentElement.scrollTop;}}
+    return {x:left,y:top,left,top,width:this.offsetWidth,height:this.offsetHeight,right:left+this.offsetWidth,bottom:top+this.offsetHeight};
+  }
+  matches(selector) {
+    const attribute = selector.match(/\[([^=\]]+)(?:="([^"]*)")?\]/);
+    if (attribute && (attribute[2] === undefined ? this.getAttribute(attribute[1]) === null : this.getAttribute(attribute[1]) !== attribute[2])) return false;
+    selector = selector.replace(/\[[^\]]*\]/g, '');
+    const id = selector.match(/#([\w-]+)/), cls = selector.match(/\.([\w-]+)/), tag = selector.match(/^[\w-]+/);
+    return (!id || this.id === id[1]) && (!cls || this.classList.contains(cls[1])) && (!tag || this.tagName === tag[0].toUpperCase());
+  }
+  querySelectorAll(selectors) {
+    const result = [], choices = selectors.split(',');
+    const visit = node => { for (const child of node.children) { if (choices.some(selector => child.matches(selector))) result.push(child); visit(child); } };
+    visit(this); return result;
+  }
+  querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
+  closest(selector) { for (let node = this; node; node = node.parentElement) if (node.matches(selector)) return node; return null; }
+}
+
+function fixture() {
+  const sessionId = 'session-36';
+  const sessions = Array.from({length: 48}, (_, index) => ({id: `session-${index}`, title: `Synthetic session ${index}`, project: 'test', hasAnalysis: true, messageCount: 32, importedAt: 'synthetic-revision'}));
+  const session = sessions[36];
+  const structure = [{id: 'root', kind: 'root', childIds: Array.from({length: 18}, (_, index) => `topic-${index}`)}];
+  for (let index = 0; index < 18; index++) structure.push({id: `topic-${index}`, kind: 'topic', title: `Topic ${index}`, parentId: 'root', childIds: index === 12 ? Array.from({length: 16}, (_, i) => `source-q${i}`) : []});
+  const nodes = [], messages = [], anchors = {};
+  for (let index = 0; index < 16; index++) {
+    nodes.push({id: `q${index}`, title: `Question ${index}`, summary: '', project: 'test', classification: 'open_question', provenance: [{session_id: sessionId, source_node: `source-q${index}`, evidence: []}]});
+    structure.push({id: `source-q${index}`, kind: 'item', parentId: 'topic-12', childIds: []});
+    messages.push({id: `m${index}`, index, role: 'user', timestamp: `2026-10-23T00:00:${String(index).padStart(2, '0')}.000Z`, text: 'Synthetic question'});
+    anchors[`source-q${index}`] = [{messageId: `m${index}`, sourceMessageId: `original-${index}`, index}];
+  }
+  const context = {session, analysis: {structure, anchors, relations: []}, messages};
+  const graph = {nodes, edges: [], projects: ['test'], sessionCount: 1};
+  const selection = {session: sessionId, topic: 'topic:topic-12', question: JSON.stringify([sessionId, 'source-q12', 'q12']), pages: [4, 0, 1, 0], filters: {query: '', project: ''}};
+  return {sessions, sessionId, context, graph, selection};
+}
+
+async function settle() { for (let index = 0; index < 20; index++) await Promise.resolve(); }
+
+function browser({data = fixture(), storage = new Map(), seed = {[data.sessionId]: data.context}, protocol = 'http:', catalog, messages, displayEdit, sessionEdit, itemEdit} = {}) {
+  const elements = new Map();
+  const document = new Element('document'); document.document = document;
+  document.body = new Element('body', document); document.append(document.body);
+  document.visibilityState = 'visible'; document.hidden = false;
+  document.createElement = tag => new Element(tag, document);
+  document.createElementNS = (_, tag) => new Element(tag, document);
+  document.createDocumentFragment = () => new Element('fragment', document);
+  document.getElementById = id => elements.get(id) || null;
+  for (const match of html.matchAll(/<([\w-]+)\b[^>]*\bid="([^"]+)"[^>]*>/g)) {
+    const element = new Element(match[1], document); element.setAttribute('id', match[2]);
+    elements.set(match[2], element); document.body.append(element);
+  }
+  const canvas = elements.get('mind-canvas');
+  for (const name of ['sessions', 'topics', 'questions', 'answers']) {
+    const host = elements.get(`mind-${name}`), column = new Element('section', document);
+    document.body.children = document.body.children.filter(child => child !== host);
+    column.className = 'mind-column'; column.append(host); canvas.append(column);
+  }
+  elements.get('graph-data').textContent = JSON.stringify(data.graph);
+  elements.get('qa-context').textContent = JSON.stringify(seed);
+  const titleDialog=elements.get('item-title-dialog');titleDialog.open=false;
+  titleDialog.showModal=()=>{titleDialog.open=true;};titleDialog.close=()=>{titleDialog.open=false;};
+  for (const id of ['project', 'category']) elements.get(id).append(new Element('option', document));
+  const sessionStorage = {getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, String(value)), removeItem: key => storage.delete(key)};
+  let now = 0, timerId = 0, frameId = 0;
+  const timers = new Map(), frames = new Map(), requests = [], navigation = [], displayRequests = [], sessionRequests = [], itemRequests = [];
+  const schedule = (handler, delay = 0) => { const id = ++timerId; timers.set(id, {at: now + delay, handler}); return id; };
+  const clearTimer = id => timers.delete(id);
+  const location = {protocol, origin: 'http://127.0.0.1:64391', href: `${protocol}//127.0.0.1:64391/graph.html?mode=mind`, pathname: '/graph.html', search: '?mode=mind', hash: '', assign: target => navigation.push(target)};
+  const window = new Element('window', document);
+  Object.assign(window, {location, document, sessionStorage, setTimeout: schedule, clearTimeout: clearTimer});
+  window.parent = {postMessage: value => navigation.push(clone(value))};
+  window.matchMedia = () => ({matches: false, addEventListener() {}});
+  let catalogHandler = catalog || (() => ({sessions: clone(data.sessions)}));
+  const response = value => ({ok: true, json: async () => clone(value)});
+  const fetch = async (url, options = {}) => {
+    requests.push(String(url));
+    if(String(url)==='item-display.json') {
+      assert.equal(options.method,'POST');assert.equal(options.headers['X-Context-Graph-Action'],'item-display');
+      assert.equal(options.headers['Content-Type'],'application/json');assert.ok(itemEdit,'only explicit item tests may save titles');
+      const value=JSON.parse(options.body);itemRequests.push(value);return itemEdit(value,options);
+    }
+    if(String(url)==='session-display.json') {
+      assert.equal(options.method,'POST');assert.equal(options.headers['X-Context-Graph-Action'],'session-display');
+      assert.equal(options.headers['Content-Type'],'application/json');assert.ok(sessionEdit,'only explicit name tests may save session labels');
+      const value=JSON.parse(options.body);sessionRequests.push(value);return sessionEdit(value,options);
+    }
+    if(String(url)==='topic-display.json') {
+      assert.equal(options.method,'POST');assert.equal(options.headers['X-Context-Graph-Action'],'topic-display');
+      assert.equal(options.headers['Content-Type'],'application/json');
+      assert.ok(displayEdit,'only explicit edit tests may write local preferences');
+      const value=JSON.parse(options.body);displayRequests.push(value);return displayEdit(value,options);
+    }
+    assert.match(String(url), /^timeline\/(sessions|messages)\.json(?:\?|$)/, 'UI must only call local read-only timeline routes');
+    if (String(url) === 'timeline/sessions.json') return response(await catalogHandler(options));
+    return response(messages ? await messages(url, options) : {...data.context, total: data.context.messages.length, offset: 0, revision: 'revision-1'});
+  };
+  const sandbox = {document, window, location, sessionStorage, fetch, URL, URLSearchParams, AbortController, console,
+    setTimeout: schedule, clearTimeout: clearTimer,
+    requestAnimationFrame: handler => { const id = ++frameId; frames.set(id, handler); return id; },
+    cancelAnimationFrame: id => frames.delete(id),
+    history: {replaceState() {}}, __KO_LABELS__: {classification: {}, relation: {}, status: {}},
+  };
+  Object.assign(window, {fetch, requestAnimationFrame: sandbox.requestAnimationFrame, cancelAnimationFrame: sandbox.cancelAnimationFrame});
+  vm.runInNewContext(source, sandbox, {filename: 'graph_view.js'});
+  return {
+    data, storage, document, window, requests, navigation, elements, timers, displayRequests, sessionRequests, itemRequests,
+    setCatalog: handler => { catalogHandler = handler; },
+    state: () => JSON.parse(storage.get(stateKey) || 'null'),
+    cards: column => elements.get(`mind-${column}`).querySelectorAll('.mind-node'),
+    selected: column => elements.get(`mind-${column}`).querySelector('.mind-node[aria-pressed="true"]'),
+    pager: (column, direction) => elements.get(`mind-${column}`).querySelectorAll('button').find(button => button.getAttribute('aria-label') === `${direction === 'next' ? '다음' : '이전'} ${{sessions: '세션', topics: '주제', questions: '질문', answers: '답변'}[column]} 노드`),
+    async advance(milliseconds) {
+      const end = now + milliseconds;
+      while (true) {
+        const first = [...timers.entries()].filter(([, timer]) => timer.at <= end).sort((a, b) => a[1].at - b[1].at)[0];
+        if (!first) break;
+        now = first[1].at; timers.delete(first[0]); first[1].handler(); await settle();
+      }
+      now = end; await settle();
+    },
+  };
+}
+
+test('full startup keeps restored page four while a partial catalog is replaced asynchronously', async () => {
+  const data = fixture(), pending = deferred(), storage = new Map([[stateKey, JSON.stringify(data.selection)]]);
+  const app = browser({data, storage, catalog: () => pending.promise});
+  await settle();
+  assert.deepEqual(app.state(), data.selection, 'partial saved context must not overwrite restored pages');
+  pending.resolve({sessions: data.sessions}); await settle();
+  assert.equal(app.selected('sessions')?.dataset.key, data.sessionId);
+  assert.equal(app.selected('topics')?.dataset.key, data.selection.topic);
+  assert.equal(app.selected('questions')?.dataset.key, data.selection.question);
+  assert.deepEqual(app.state(), data.selection);
+  assert.match(app.elements.get('mind-sessions').textContent, /33–40 \/ 48/);
+});
+
+test('wide session list and four-column mind map switch without losing the selected branch or pages',async()=>{
+  const data=fixture(),storage=new Map([[stateKey,JSON.stringify(data.selection)]]),app=browser({data,storage});await settle();
+  assert.equal(app.elements.get('mind-sessions').hidden,false);
+  assert.equal(app.elements.get('mind-mode').getAttribute('aria-pressed'),'true');
+  app.elements.get('session-list-mode').click();
+  assert.equal(app.elements.get('mind-sessions').hidden,false);
+  assert.equal(app.elements.get('mind-topics').closest('.mind-column').hidden,true);
+  assert.equal(app.state().sessionListOpen,true);
+  const restored=browser({data,storage});await settle();
+  assert.equal(restored.elements.get('mind-sessions').hidden,false);
+  restored.selected('sessions').click();
+  assert.deepEqual(restored.state(),data.selection,'choosing the same session must retain its topic, question and pages');
+  assert.equal(restored.elements.get('mind-sessions').hidden,false);
+  assert.equal(restored.elements.get('mind-canvas').classList.contains('session-picker-open'),false);
+  assert.equal(restored.elements.get('mind-mode').getAttribute('aria-pressed'),'true');
+  assert.equal(restored.selected('sessions').querySelectorAll('.session-request-preview').length,0);
+  assert.equal(restored.elements.get('mind-topics').closest('.mind-column').hidden,false);
+  const fresh=browser({data});await settle();
+  assert.equal(fresh.elements.get('mind-sessions').hidden,false);
+  assert.equal(fresh.elements.get('mind-topics').closest('.mind-column').hidden,true);
+});
+
+test('explicit list and map toggles preserve search, project, pages and source identities without new requests',async()=>{
+  const data=fixture(),selection={...data.selection,filters:{query:'Synthetic session',project:'test'}};
+  const before=clone(data),app=browser({data,storage:new Map([[stateKey,JSON.stringify(selection)]])});await settle();
+  const requests=app.requests.length;
+  app.elements.get('session-list-mode').click();
+  assert.equal(app.elements.get('query').value,selection.filters.query);
+  assert.equal(app.elements.get('project').value,'test');
+  assert.deepEqual(app.state(),{...selection,sessionListOpen:true});
+  app.elements.get('mind-mode').click();
+  assert.deepEqual(app.state(),selection);
+  for(const stage of ['sessions','topics','questions','answers'])assert.equal(app.elements.get('mind-'+stage).closest('.mind-column').hidden,false);
+  assert.equal(app.selected('questions').dataset.key,selection.question);
+  assert.equal(app.requests.length,requests);assert.deepEqual(data,before);
+});
+
+test('mind map can be opened before choosing a session and the layout choice survives reload',async()=>{
+  const data=fixture(),storage=new Map(),app=browser({data,storage});await settle();
+  app.elements.get('mind-mode').click();
+  assert.equal(app.state().sessionListOpen,false);
+  assert.equal(app.elements.get('mind-topics').closest('.mind-column').hidden,false);
+  assert.equal(app.elements.get('mind-mode').getAttribute('aria-pressed'),'true');
+  const restored=browser({data,storage});await settle();
+  assert.equal(restored.elements.get('mind-canvas').classList.contains('session-picker-open'),false);
+  restored.elements.get('mind-step-0').click();
+  assert.equal(restored.elements.get('mind-canvas').classList.contains('session-picker-open'),false,'session stage stays in the four-column map');
+});
+
+test('session picker orders by recent activity, renders literal previews and preserves the graph',async()=>{
+  const data=fixture();data.sessions=data.sessions.slice(0,4);
+  Object.assign(data.sessions[0],{lastMessageAt:'2026-01-01T00:00:00Z',hasAnalysis:true});
+  Object.assign(data.sessions[1],{lastMessageAt:'2026-10-25T00:00:00Z',hasAnalysis:false,
+    displayTitle:'사용자 표시 이름',requestPreviews:{scope:'session',first:{text:'<img src=x> FIRST',messageId:'first-id'},latest:{text:'LATEST UNIQUE',messageId:'last-id'}}});
+  Object.assign(data.sessions[2],{lastMessageAt:'invalid'});
+  Object.assign(data.sessions[3],{lastMessageAt:'2026-03-01T00:00:00Z'});
+  const before=clone(data),app=browser({data});await settle();
+  assert.deepEqual(app.cards('sessions').map(c=>c.dataset.key),['session-1','session-3','session-0','session-2']);
+  const card=app.cards('sessions')[0];
+  assert.equal(card.querySelector('.name').textContent,'사용자 표시 이름');
+  const previews=card.querySelectorAll('.session-request-preview');
+  assert.equal(previews.find(e=>e.dataset.preview==='first').dataset.messageId,'first-id');
+  assert.match(previews.find(e=>e.dataset.preview==='latest').textContent,/LATEST UNIQUE/);
+  assert.equal(card.querySelector('img'),null);
+  app.elements.get('query').value='LATEST UNIQUE';app.elements.get('query').dispatchEvent({type:'input'});
+  assert.deepEqual(app.cards('sessions').map(c=>c.dataset.key),['session-1']);
+  assert.deepEqual(data,before);
+});
+
+test('stage navigation moves reading focus without changing selection, pages or fetching analysis',async()=>{
+  const data=fixture(),app=browser({data,storage:new Map([[stateKey,JSON.stringify(data.selection)]])});await settle();
+  const before=clone(app.state()),requests=app.requests.length;
+  app.elements.get('mind-step-2').click();
+  const host=app.elements.get('mind-questions');
+  assert.equal(app.document.lastScrolled,host.closest('.mind-column'));
+  assert.equal(app.document.activeElement,host);
+  assert.deepEqual(app.state(),before);assert.equal(app.requests.length,requests);
+  app.elements.get('mind-reduce-motion').checked=true;
+  app.elements.get('mind-step-0').click();
+  assert.equal(app.document.lastScrollOptions.behavior,'auto');
+});
+
+test('compact lists retain their scroll offset during catalogue updates and keep paging outside the list',async()=>{
+  const data=fixture(),app=browser({data,storage:new Map([[stateKey,JSON.stringify(data.selection)]])});await settle();
+  const host=app.elements.get('mind-sessions');host.querySelector('.mind-node-list').scrollTop=72;
+  app.setCatalog(()=>({sessions:data.sessions.map(session=>({...session,messageCount:session.messageCount+1}))}));
+  await app.advance(5000);
+  assert.equal(host.querySelector('.mind-node-list').scrollTop,72);
+  assert.equal(host.querySelector('.paging').parentElement,host);
+  assert.deepEqual(app.state(),data.selection);
+});
+
+test('restored topic and question survive startup without embedded analysis context', async () => {
+  const data = fixture(), storage = new Map([[stateKey, JSON.stringify(data.selection)]]);
+  const app = browser({data, storage, seed: {}}); await settle();
+  assert.equal(app.selected('sessions')?.dataset.key, data.sessionId);
+  assert.equal(app.selected('topics')?.dataset.key, data.selection.topic);
+  assert.equal(app.selected('questions')?.dataset.key, data.selection.question);
+  assert.deepEqual(app.state(), data.selection);
+});
+
+test('pager-only changes persist across source navigation and a new browser script instance', async () => {
+  const data = fixture(), storage = new Map();
+  const app = browser({data, storage}); await settle();
+  for (let page = 0; page < 4; page++) app.pager('sessions', 'next').click();
+  app.cards('sessions').find(card => card.dataset.key === data.sessionId).click();
+  app.cards('topics').find(card => card.dataset.key === data.selection.topic).click();
+  app.pager('questions', 'next').click();
+  app.cards('questions').find(card => card.dataset.key === data.selection.question).click();
+  // Leave the topic page without selecting another topic. Its page is still state.
+  app.pager('topics', 'next').click();
+  app.pager('topics', 'next').click();
+  const expected = {...data.selection, pages: [4, 2, 1, 0]};
+  assert.deepEqual(app.state(), expected);
+  app.elements.get('mind-actions').querySelector('.source-open').click(); await settle();
+  assert.deepEqual(app.navigation, [{type: 'context-graph-open-source', session: data.sessionId, message: 'm12'}]);
+  const returned = browser({data, storage}); await settle();
+  assert.deepEqual(returned.state(), expected);
+  assert.equal(returned.selected('sessions')?.dataset.key, data.sessionId);
+  assert.equal(returned.selected('questions')?.dataset.key, data.selection.question);
+  assert.match(returned.elements.get('mind-topics').textContent, /17–18 \/ 18/);
+  assert.ok(returned.elements.get('mind-actions').querySelector('.source-open'));
+});
+
+test('polling adds a collected session without replacing selected topic and question DOM', async () => {
+  const data = fixture(), storage = new Map([[stateKey, JSON.stringify(data.selection)]]);
+  const app = browser({data, storage}); await settle();
+  const topic = app.selected('topics'), question = app.selected('questions');
+  const updated = [...data.sessions, {id: 'newly-collected', title: 'New synthetic session', project: 'test', hasAnalysis: false, messageCount: 1}];
+  app.setCatalog(() => ({sessions: updated})); await app.advance(5000);
+  assert.deepEqual(app.state(), data.selection);
+  assert.strictEqual(app.selected('topics'), topic);
+  assert.strictEqual(app.selected('questions'), question);
+  assert.match(app.elements.get('info').textContent, /49/);
+  for (let page = 4; page < 6; page++) app.pager('sessions', 'next').click();
+  assert.ok(app.cards('sessions').some(card => card.dataset.key === 'newly-collected'));
+  assert.equal(app.requests.filter(url => url.startsWith('timeline/messages.json')).length, 1, 'catalog polling must not reload original messages');
+});
+
+test('unchanged polls keep visible cards, focus and selection untouched', async () => {
+  const data = fixture(), storage = new Map([[stateKey, JSON.stringify(data.selection)]]);
+  const app = browser({data, storage}); await settle();
+  const selectedSession = app.selected('sessions'), question = app.selected('questions'); question.focus();
+  await app.advance(15000);
+  assert.strictEqual(app.selected('sessions'), selectedSession);
+  assert.strictEqual(app.selected('questions'), question);
+  assert.strictEqual(app.document.activeElement, question);
+  assert.deepEqual(app.state(), data.selection);
+  assert.ok(app.requests.filter(url => url === 'timeline/sessions.json').length >= 3);
+});
+
+test('failed catalog refresh preserves visible data and retries successfully', async () => {
+  const data = fixture(), storage = new Map([[stateKey, JSON.stringify(data.selection)]]);
+  const app = browser({data, storage}); await settle();
+  const selectedSession = app.selected('sessions');
+  app.setCatalog(() => { throw new Error('Synthetic unavailable local reader'); });
+  await app.advance(5000);
+  assert.strictEqual(app.selected('sessions'), selectedSession);
+  assert.deepEqual(app.state(), data.selection);
+  app.setCatalog(() => ({sessions: [...data.sessions, {id: 'recovery', project: 'test', hasAnalysis: false}]}));
+  await app.advance(5000);
+  assert.match(app.elements.get('info').textContent, /49/);
+  assert.deepEqual(app.state(), data.selection);
+});
+
+test('catalog failure at startup does not discard a restored later page before recovery', async () => {
+  const data = fixture(), storage = new Map([[stateKey, JSON.stringify(data.selection)]]);
+  const app = browser({data, storage, catalog: () => { throw new Error('Synthetic offline reader'); }}); await settle();
+  assert.deepEqual(app.state(), data.selection);
+  app.setCatalog(() => ({sessions: data.sessions})); await app.advance(5000);
+  assert.equal(app.selected('sessions')?.dataset.key, data.sessionId);
+  assert.equal(app.selected('questions')?.dataset.key, data.selection.question);
+  assert.deepEqual(app.state(), data.selection);
+});
+
+test('standalone file exports never fetch or schedule catalog polling', async () => {
+  const data = fixture(), app = browser({data, protocol: 'file:'}); await settle();
+  await app.advance(60000);
+  assert.deepEqual(app.requests, []);
+  assert.equal(app.timers.size, 0);
+  assert.equal(app.cards('sessions').length, 1);
+});
+
+test('pagehide stops catalog polling for a discarded viewer', async () => {
+  const app = browser(); await settle();
+  const count = app.requests.length;
+  app.window.dispatchEvent({type: 'pagehide'}); await app.advance(30000);
+  assert.equal(app.requests.length, count);
+});
+
+test('an unanalyzed session on page five restores after context loading finishes before its catalog', async () => {
+  const data = fixture(), pending = deferred();
+  data.sessions = Array.from({length: 80}, (_, index) => ({id: `session-${index}`, title: `Synthetic session ${index}`, project: 'test', hasAnalysis: index === 36}));
+  const selection = {session: 'session-33', topic: null, question: '', pages: [4, 0, 0, 0], filters: {query: '', project: ''}};
+  const storage = new Map([[stateKey, JSON.stringify(selection)]]);
+  const app = browser({data, storage, catalog: () => pending.promise}); await settle();
+  assert.deepEqual(app.state(), selection);
+  assert.equal(app.selected('sessions'), null, 'the partial catalog only contains the analyzed session');
+  pending.resolve({sessions: data.sessions}); await settle();
+  assert.equal(app.selected('sessions')?.dataset.key, selection.session);
+  assert.match(app.elements.get('mind-sessions').textContent, /33–40 \/ 80/);
+  const original = app.elements.get('mind-actions').querySelector('button');
+  assert.ok(original, 'the delayed catalog must also render the restored session original-conversation action');
+  assert.equal(original.disabled, false); original.click();
+  assert.deepEqual(app.navigation, [{type: 'context-graph-open-session', session: selection.session}]);
+  const returned = browser({data, storage}); await settle();
+  assert.equal(returned.selected('sessions')?.dataset.key, selection.session);
+  assert.deepEqual(returned.state(), selection);
+});
+
+test('project and text filters restore the same page even when the project exists only in the live catalog', async () => {
+  const data = fixture(), pending = deferred();
+  data.sessions = data.sessions.map((session, index) => ({...session, hasAnalysis: index === 36, project: index < 16 ? 'live-only' : 'test', title: index < 16 ? `Matched ${index}` : session.title}));
+  const selection = {session: 'session-10', topic: null, question: '', pages: [1, 0, 0, 0], filters: {query: 'Matched', project: 'live-only'}};
+  const storage = new Map([[stateKey, JSON.stringify(selection)]]);
+  const app = browser({data, storage, catalog: () => pending.promise}); await settle();
+  assert.equal(app.elements.get('project').value, 'live-only');
+  pending.resolve({sessions: data.sessions}); await settle();
+  assert.equal(app.elements.get('query').value, 'Matched');
+  assert.equal(app.elements.get('project').value, 'live-only');
+  assert.equal(app.selected('sessions')?.dataset.key, selection.session);
+  assert.match(app.elements.get('mind-sessions').textContent, /9–16 \/ 16/);
+  assert.deepEqual(app.state(), selection);
+});
+
+test('catalog timeouts abort one request and allow the next poll to recover', async () => {
+  const data = fixture(), storage = new Map([[stateKey, JSON.stringify(data.selection)]]);
+  const app = browser({data, storage}); await settle();
+  let aborted = false;
+  app.setCatalog(({signal}) => new Promise((resolve, reject) => signal.addEventListener('abort', () => { aborted = true; reject(new Error('Synthetic abort')); })));
+  await app.advance(5000);
+  app.document.dispatchEvent({type: 'visibilitychange'});
+  app.document.dispatchEvent({type: 'visibilitychange'}); await settle();
+  assert.equal(app.requests.filter(url => url === 'timeline/sessions.json').length, 2, 'visible events must not overlap an in-flight catalog request');
+  await app.advance(8000);
+  assert.equal(aborted, true);
+  assert.deepEqual(app.state(), data.selection);
+  app.setCatalog(() => ({sessions: [...data.sessions, {id: 'recovered-after-timeout', project: 'test', hasAnalysis: false}]}));
+  await app.advance(5000);
+  assert.match(app.elements.get('info').textContent, /49/);
+  assert.deepEqual(app.state(), data.selection);
+});
+
+test('a page restored from browser history resumes catalog polling', async () => {
+  const app = browser(); await settle();
+  app.window.dispatchEvent({type: 'pagehide'}); await app.advance(10000);
+  const count = app.requests.filter(url => url === 'timeline/sessions.json').length;
+  app.window.dispatchEvent({type: 'pageshow'}); await settle();
+  assert.equal(app.requests.filter(url => url === 'timeline/sessions.json').length, count + 1);
+  await app.advance(5000);
+  assert.equal(app.requests.filter(url => url === 'timeline/sessions.json').length, count + 2);
+});
+
+test('a failed context read cannot erase saved child pages and selection before the next successful load', async () => {
+  const data = fixture(), storage = new Map([[stateKey, JSON.stringify(data.selection)]]);
+  const app = browser({data, storage, seed: {}, messages: () => { throw new Error('Synthetic unavailable context'); }});
+  await settle();
+  assert.equal(app.selected('sessions')?.dataset.key, data.sessionId);
+  assert.deepEqual(app.cards('topics').map(card=>card.dataset.key), ['unassigned'],
+    'without context, saved graph questions have no confirmed topic membership');
+  assert.match(app.cards('topics')[0].textContent, /순서 미확정/);
+  assert.equal(app.cards('questions').length, 0);
+  app.window.dispatchEvent({type: 'pagehide'});
+  assert.deepEqual(app.state(), data.selection, 'saving during navigation must preserve the unresolved selection and its child pages');
+  const returned = browser({data, storage, seed: {}}); await settle();
+  assert.equal(returned.selected('sessions')?.dataset.key, data.sessionId);
+  assert.equal(returned.selected('topics')?.dataset.key, data.selection.topic);
+  assert.equal(returned.selected('questions')?.dataset.key, data.selection.question);
+  assert.deepEqual(returned.state(), data.selection);
+  returned.elements.get('mind-actions').querySelector('.source-open').click(); await settle();
+  assert.deepEqual(returned.navigation, [{type: 'context-graph-open-source', session: data.sessionId, message: 'm12'}]);
+});
+
+test('mind-map topics and the Q&A selector share first-question ordering and unknown labels', async () => {
+  const data=fixture(),before=clone(data),app=browser({data});await settle();
+  // The analysed fixture session is on the fifth session page.
+  for(let page=0;page<4;page++) app.pager('sessions','next').click();
+  app.cards('sessions').find(card=>card.dataset.key===data.sessionId).click();
+  const cards=app.cards('topics');
+  assert.equal(cards[0].dataset.key,'topic:topic-12');
+  assert.match(cards[0].textContent,/첫 질문 원문 #1/);
+  assert.ok(cards.slice(1).every(card=>card.textContent.includes('순서 미확정')));
+  app.pager('topics','next').click();app.pager('topics','next').click();
+  assert.ok(app.cards('topics').every(card=>card.textContent.includes('순서 미확정')));
+  app.elements.get('qa-mode').click();
+  const options=app.elements.get('qa-topic').options;
+  assert.equal(options[1].value,'topic:topic-12');
+  assert.match(options[1].textContent,/첫 질문 원문 #1/);
+  assert.ok(options.slice(2).every(option=>option.textContent.includes('순서 미확정')));
+  assert.deepEqual(data,before,'topic ordering must only change presentation');
+});
+
+test('session cards show a first-request title as text with activity and keep IDs out of visible metadata', async () => {
+  const data = fixture();
+  Object.assign(data.sessions[0], {title: '<img src=x onerror=unsafe()> 저장 위치를 알려줘', titleSource: 'first_user', lastMessageAt: '2026-10-23T10:30:00.000Z'});
+  Object.assign(data.sessions[1], {titleSource: 'analysis'});
+  const before = clone(data), app = browser({data}); await settle();
+  const card = app.cards('sessions')[0];
+  assert.equal(card.querySelector('.name').textContent, data.sessions[0].title);
+  assert.equal(card.querySelector('img'), null, 'title content must never become HTML');
+  assert.equal(card.querySelector('.session-title-source').textContent, '첫 요청');
+  assert.equal(card.querySelector('.session-project').textContent, 'test');
+  assert.match(card.querySelector('.mind-meta').textContent, /분석 있음 · 메시지 32개/);
+  assert.match(card.querySelector('.mind-activity').textContent, /^최근 /);
+  assert.ok(card.title.includes(data.sessions[0].id), 'exact ID remains available in the tooltip');
+  assert.ok(!card.textContent.includes(data.sessions[0].id), 'technical ID must not compete with the descriptive title');
+  assert.equal(app.cards('sessions')[1].querySelector('.session-title-source'), null, 'analysis titles are not relabeled as first requests');
+  assert.deepEqual(data, before, 'display must not mutate titles, graph IDs, evidence or relations');
+});
+
+test('a refreshed descriptive session title preserves the selected branch and remains searchable', async () => {
+  const data = fixture(), storage = new Map([[stateKey, JSON.stringify(data.selection)]]);
+  const app = browser({data, storage}); await settle();
+  const topic = app.selected('topics'), question = app.selected('questions');
+  const updated = data.sessions.map(session => session.id === data.sessionId ? {...session, title: '배포 오류를 확인해줘', titleSource: 'first_user'} : session);
+  app.setCatalog(() => ({sessions: updated})); await app.advance(5000);
+  assert.equal(app.selected('sessions').querySelector('.name').textContent, '배포 오류를 확인해줘');
+  assert.equal(app.selected('topics'), topic);
+  assert.equal(app.selected('questions'), question);
+  assert.deepEqual(app.state(), data.selection);
+  app.elements.get('query').value = '배포 오류';
+  app.elements.get('query').dispatchEvent({type: 'input'});
+  assert.equal(app.cards('sessions').length, 1);
+  assert.equal(app.selected('sessions').dataset.key, data.sessionId);
+  assert.match(app.elements.get('query').placeholder, /첫 요청/);
+});
+
+const scopeKey = 'context-graph-session-scope';
+function lineageFixture() {
+  const data=fixture();
+  for(const [index,session] of data.sessions.entries()) {
+    Object.assign(session,{sessionKind:index===0?'primary':'subagent',parentSessionId:index===0?null:'session-0',rootSessionId:index===0?null:'session-0',titleSource:index===0?'first_user':'own_request'});
+  }
+  return data;
+}
+function change(app,id,value) {
+  app.elements.get(id).value=value;app.elements.get(id).dispatchEvent({type:'change'});
+}
+
+test('ordinary conversations are the default even with a legacy selection of an auxiliary session',async()=>{
+  const data=lineageFixture(),storage=new Map([[stateKey,JSON.stringify(data.selection)]]);
+  const app=browser({data,storage});await settle();
+  assert.deepEqual(app.cards('sessions').map(card=>card.dataset.key),['session-0']);
+  assert.equal(app.elements.get('catalog-kind').value,'primary');
+  assert.equal(app.selected('topics'),null);
+  assert.match(app.cards('sessions')[0].textContent,/보조 작업 47개/);
+  assert.equal(app.elements.get('catalog-parent-filter').hidden,true);
+});
+
+test('auxiliary sessions are grouped by the parent conversation with literal own-request titles',async()=>{
+  const data=lineageFixture();
+  data.sessions[1].sessionKind='primary';data.sessions[1].title='<img src=x onerror=alert(1)> Parent';
+  data.sessions[2].parentSessionId='session-1';data.sessions[2].rootSessionId='session-1';
+  data.sessions[2].title='<script>own request</script>';
+  const before=clone(data),app=browser({data});await settle();
+  change(app,'catalog-kind','subagent');
+  assert.equal(app.elements.get('catalog-parent-filter').hidden,false);
+  change(app,'catalog-parent','session-1');
+  assert.deepEqual(app.cards('sessions').map(card=>card.dataset.key),['session-2']);
+  assert.equal(app.cards('sessions')[0].querySelector('.session-title-source').textContent,'분기 후 요청');
+  assert.equal(app.cards('sessions')[0].querySelector('script'),null);
+  assert.equal(app.elements.get('catalog-parent').querySelector('img'),null);
+  assert.ok(app.elements.get('catalog-parent').textContent.includes(data.sessions[1].title));
+  assert.deepEqual(data,before,'lineage filtering must not mutate graph IDs, relations, or source titles');
+});
+
+test('auxiliary scope and parent survive source navigation with every selected branch and page',async()=>{
+  const data=lineageFixture(),storage=new Map([[stateKey,JSON.stringify(data.selection)],[scopeKey,JSON.stringify({kind:'subagent',parent:'session-0'})]]);
+  const app=browser({data,storage});await settle();
+  assert.equal(app.selected('sessions')?.dataset.key,data.sessionId);
+  app.elements.get('mind-actions').querySelector('.source-open').click();await settle();
+  assert.deepEqual(app.navigation,[{type:'context-graph-open-source',session:data.sessionId,message:'m12'}]);
+  const returned=browser({data,storage});await settle();
+  assert.equal(returned.elements.get('catalog-kind').value,'subagent');
+  assert.equal(returned.elements.get('catalog-parent').value,'session-0');
+  assert.deepEqual(returned.state(),data.selection);
+  assert.equal(returned.selected('sessions')?.dataset.key,data.sessionId);
+  assert.equal(returned.selected('topics')?.dataset.key,data.selection.topic);
+  assert.equal(returned.selected('questions')?.dataset.key,data.selection.question);
+});
+
+test('new auxiliary sessions update counts without replacing primary branches or resetting pages',async()=>{
+  const data=fixture();for(const session of data.sessions)session.sessionKind='primary';
+  const storage=new Map([[stateKey,JSON.stringify(data.selection)]]),app=browser({data,storage});await settle();
+  const topic=app.selected('topics'),question=app.selected('questions');
+  app.setCatalog(()=>({sessions:[{id:'new-helper',sessionKind:'subagent',parentSessionId:data.sessionId,rootSessionId:data.sessionId,title:'Synthetic helper',hasAnalysis:false},...data.sessions]}));
+  await app.advance(5000);
+  assert.equal(app.selected('sessions')?.dataset.key,data.sessionId);
+  assert.equal(app.selected('topics'),topic);assert.equal(app.selected('questions'),question);
+  assert.deepEqual(app.state(),data.selection);
+  assert.match(app.elements.get('catalog-kind').textContent,/보조 작업 · 1개/);
+  assert.equal(app.cards('sessions').some(card=>card.dataset.key==='new-helper'),false);
+});
+
+test('explicit unknown lineage is separate and remains accessible without automatic reclassification',async()=>{
+  const data=lineageFixture();data.sessions[1].sessionKind='unknown';
+  const app=browser({data});await settle();
+  change(app,'catalog-kind','unknown');
+  assert.deepEqual(app.cards('sessions').map(card=>card.dataset.key),['session-1']);
+  app.cards('sessions')[0].click();
+  app.elements.get('mind-actions').querySelector('button').click();
+  assert.deepEqual(app.navigation,[{type:'context-graph-open-session',session:'session-1'}]);
+});
+
+function timelineBrowser({sessions,messageSessions=sessions,hash='',storage=new Map(),searchResults=[]}) {
+  const script=fs.readFileSync(path.join(__dirname,'../session_timeline.js'),'utf8');
+  const elements=new Map(),document=new Element('document');document.document=document;
+  document.body=new Element('body',document);document.append(document.body);
+  document.createElement=tag=>new Element(tag,document);
+  document.createDocumentFragment=()=>new Element('fragment',document);
+  document.createTextNode=value=>{const node=new Element('text',document);node.textContent=value;return node;};
+  document.getElementById=id=>{
+    if(!elements.has(id)) {const node=new Element('div',document);node.id=id;elements.set(id,node);document.body.append(node);}
+    return elements.get(id);
+  };
+  for(const match of script.matchAll(/byId\("([^"]+)"\)/g))document.getElementById(match[1]);
+  document.getElementById('timeline-labels').textContent=JSON.stringify({classification:{},status:{},relation:{}});
+  const requests=[],timers=[],location={protocol:'https:',hash};
+  const saved={getItem:key=>storage.get(key)||null,setItem:(key,value)=>storage.set(key,String(value))};
+  const dialog=document.getElementById('search-dialog');dialog.showModal=()=>{dialog.open=true;};dialog.close=()=>{dialog.open=false;};
+  const fetch=async(url,options={})=>{
+    requests.push({url:String(url),method:options.method||'GET',body:options.body});
+    const parsed=new URL(url,'https://synthetic.invalid/');let value;
+    if(parsed.pathname==='/status.json') value={messageCount:0,sessionCount:sessions.length,state:'ready'};
+    else if(parsed.pathname==='/timeline/sessions.json') value={sessions};
+    else if(parsed.pathname==='/timeline/messages.json') {
+      const session=messageSessions.find(item=>item.id===parsed.searchParams.get('session'));
+      value={session,total:0,offset:0,revision:session.id,messages:[],analysis:{nodes:[],anchors:{},relations:[],unplacedIds:[]}};
+    } else if(parsed.pathname==='/timeline/search.json') value={results:searchResults,total:searchResults.length,offset:0};
+    else assert.fail('unexpected non-read-only UI request');
+    return {ok:true,json:async()=>clone(value)};
+  };
+  function Option(text,value) {const node=document.createElement('option');node.textContent=text;node.value=value;return node;}
+  vm.runInNewContext(script,{document,location,fetch,sessionStorage:saved,localStorage:saved,URLSearchParams,Option,innerWidth:1400,
+    history:{replaceState(){}},setTimeout:handler=>{timers.push(handler);},console},{filename:'session_timeline.js'});
+  return {elements,requests,storage,cards:()=>document.getElementById('session-list').querySelectorAll('.session'),
+    setCatalog:next=>{sessions=next;},async poll(){timers.shift()();await settle();}};
+}
+
+test('timeline defaults to ordinary conversations and exposes parent-grouped auxiliary sessions',async()=>{
+  const data=lineageFixture(),app=timelineBrowser({sessions:data.sessions});await settle();
+  assert.deepEqual(app.cards().map(card=>card.dataset.sessionId),['session-0']);
+  change(app,'session-kind','subagent');await settle();
+  assert.equal(app.elements.get('session-parent').value,'session-0');
+  assert.equal(app.cards().length,47);
+  assert.equal(app.cards()[0].querySelector('.session-title-source').textContent,'분기 후 요청');
+});
+
+test('raw source deep links reveal the correct auxiliary parent group',async()=>{
+  const data=lineageFixture(),app=timelineBrowser({sessions:data.sessions,hash:'#session=session-36&message=synthetic-message'});await settle();
+  assert.equal(app.elements.get('session-kind').value,'subagent');
+  assert.equal(app.elements.get('session-parent').value,'session-0');
+  assert.equal(app.cards().find(card=>card.getAttribute('aria-pressed')==='true').dataset.sessionId,'session-36');
+  assert.ok(app.requests.some(request=>request.url.includes('message=synthetic-message')));
+});
+
+test('full-text search still covers all kinds and can reveal a matching auxiliary session',async()=>{
+  const data=lineageFixture(),app=timelineBrowser({sessions:data.sessions,searchResults:[{sessionId:'session-36',id:'synthetic-message',sessionTitle:'Synthetic helper',project:'test',role:'user',index:0,snippet:'Synthetic',matchStart:0,matchEnd:9}]});await settle();
+  app.elements.get('fulltext-query').value='Synthetic';
+  app.elements.get('fulltext-scope').value='all';
+  app.elements.get('fulltext-form').dispatchEvent({type:'submit',preventDefault(){}});await settle();
+  const request=app.requests.find(item=>item.url==='timeline/search.json');
+  assert.equal(JSON.parse(request.body).session,'');
+  assert.equal(Object.hasOwn(JSON.parse(request.body),'sessionKind'),false,'list scope must not silently constrain full-text search');
+  app.elements.get('search-results').querySelector('.search-result').click();await settle();
+  assert.equal(app.elements.get('session-kind').value,'subagent');
+  assert.equal(app.elements.get('session-parent').value,'session-0');
+  assert.equal(app.cards().find(card=>card.getAttribute('aria-pressed')==='true').dataset.sessionId,'session-36');
+});
+
+test('a search hit collected after the catalog reveals its authoritative helper header and survives the next poll',async()=>{
+  const data=lineageFixture();
+  const app=timelineBrowser({sessions:[data.sessions[0]],messageSessions:data.sessions,
+    searchResults:[{sessionId:'session-36',id:'synthetic-message',sessionTitle:'Synthetic helper',project:'test',role:'user',index:0,snippet:'Synthetic',matchStart:0,matchEnd:9}]});
+  await settle();
+  assert.equal(app.elements.get('session-kind').value,'primary');
+  app.elements.get('fulltext-query').value='Synthetic';app.elements.get('fulltext-scope').value='all';
+  app.elements.get('fulltext-form').dispatchEvent({type:'submit',preventDefault(){}});await settle();
+  app.elements.get('search-results').querySelector('.search-result').click();await settle();
+  assert.equal(app.elements.get('session-kind').value,'subagent');
+  assert.equal(app.elements.get('session-parent').value,'session-0');
+  assert.equal(app.cards().find(card=>card.getAttribute('aria-pressed')==='true').dataset.sessionId,'session-36');
+  assert.equal(app.elements.get('conversation-title').textContent,data.sessions[36].title);
+  app.setCatalog(data.sessions);await app.poll();
+  assert.equal(app.cards().find(card=>card.getAttribute('aria-pressed')==='true').dataset.sessionId,'session-36');
+  assert.equal(app.elements.get('conversation-title').textContent,data.sessions[36].title);
+  assert.ok(app.requests.filter(request=>request.url.startsWith('timeline/messages.json')).slice(1).every(request=>request.url.includes('session=session-36')));
+  const selectedCard=app.cards().find(card=>card.getAttribute('aria-pressed')==='true');
+  app.elements.get('latest').click();await settle();
+  assert.equal(app.cards().find(card=>card.getAttribute('aria-pressed')==='true'),selectedCard,'an unchanged message read must not replace the session list');
+});
+
+function topicUserEvidenceFixture() {
+  const data=fixture();
+  data.context.analysis.structure.find(node=>node.id==='topic-0').childIds=['source-reviewed'];
+  data.context.analysis.structure.push({id:'source-reviewed',kind:'item',parentId:'topic-0'});
+  data.graph.nodes.push({id:'reviewed-decision',title:'Saved decision',summary:'',project:'test',classification:'decision',
+    provenance:[{session_id:data.sessionId,source_node:'source-reviewed',evidence:[]}]});
+  data.context.messages.push({id:'raw-reviewed',index:30,role:'user',timestamp:'',hasUserContent:true});
+  data.context.analysis.anchors['source-reviewed']=[{messageId:'raw-reviewed',index:30,sourceMessageId:'saved-review-alias'}];
+  return data;
+}
+
+test('live topic recovery labels user evidence and opens the stored original without adding a question',async()=>{
+  const data=topicUserEvidenceFixture(),before=clone(data),app=browser({data,seed:{}});await settle();
+  for(let page=0;page<4;page++)app.pager('sessions','next').click();
+  app.cards('sessions').find(card=>card.dataset.key===data.sessionId).click();
+  const topic=app.cards('topics').find(card=>card.dataset.key==='topic:topic-0');assert.ok(topic);
+  assert.match(topic.textContent,/질문 0개 · 사용자 근거 원문 #31/);
+  topic.click();assert.equal(app.cards('questions').length,0);
+  const source=app.elements.get('mind-actions').querySelector('.topic-source-open');assert.ok(source);
+  assert.equal(source.disabled,false);source.click();await settle();
+  assert.deepEqual(app.navigation,[{type:'context-graph-open-source',session:data.sessionId,message:'raw-reviewed'}]);
+  assert.equal(app.state().topic,'topic:topic-0');
+  assert.deepEqual(data,before);
+});
+
+test('offline user-evidence order keeps the reference but disables original navigation',async()=>{
+  const data=topicUserEvidenceFixture();data.selection.pages[0]=0;
+  const app=browser({data,protocol:'file:',storage:new Map([[stateKey,JSON.stringify({...data.selection,topic:'topic:topic-0',question:''})]])});await settle();
+  assert.match(app.selected('topics').textContent,/사용자 근거 원문 #31/);
+  assert.equal(app.elements.get('mind-actions').querySelector('.topic-source-open').disabled,true);
+  assert.equal(app.requests.length,0);
+});
+
+function auxiliaryTopicsFixture() {
+  const data=topicUserEvidenceFixture(),structure=data.context.analysis.structure;
+  structure.find(node=>node.id==='topic-0').displayGroup='auxiliary';
+  const other=structure.find(node=>node.id==='topic-1');other.displayGroup='auxiliary';
+  for(let index=0;index<9;index++) {
+    const source=`aux-source-${index}`,id=`aux-item-${index}`;other.childIds.push(source);
+    structure.push({id:source,kind:'item',parentId:other.id});
+    data.graph.nodes.push({id,title:`Existing auxiliary ${index}`,summary:'',project:'test',classification:'assistant_statement',
+      provenance:[{session_id:data.sessionId,source_node:source,evidence:[]}]});
+  }
+  return data;
+}
+
+async function selectFixtureSession(app,data) {
+  for(let page=0;page<4;page++)app.pager('sessions','next').click();
+  app.cards('sessions').find(card=>card.dataset.key===data.sessionId).click();
+}
+
+test('mind map defaults to primary topics and auxiliary mode opens existing items and exact source',async()=>{
+  const data=auxiliaryTopicsFixture(),before=clone(data),app=browser({data,seed:{}});await settle();
+  await selectFixtureSession(app,data);
+  assert.equal(app.elements.get('mind-primary-topics').textContent,'주제 16개');
+  assert.equal(app.elements.get('mind-auxiliary-topics').textContent,'보조 정보 2개');
+  assert.ok(app.cards('topics').every(card=>!['topic:topic-0','topic:topic-1'].includes(card.dataset.key)));
+  app.elements.get('mind-auxiliary-topics').click();
+  assert.deepEqual(app.cards('topics').map(card=>card.dataset.key),['topic:topic-0','topic:topic-1']);
+  app.cards('topics')[0].click();
+  assert.equal(app.cards('questions')[0].dataset.nodeId,'reviewed-decision');
+  app.cards('questions')[0].click();
+  app.elements.get('inspector').querySelector('.source-open').click();await settle();
+  assert.deepEqual(app.navigation,[{type:'context-graph-open-source',session:data.sessionId,message:'raw-reviewed'}]);
+  assert.equal(app.state().topicGroup,'auxiliary');
+  assert.deepEqual(data,before);
+});
+
+test('auxiliary group, topic and later item page survive a fresh browser with delayed context',async()=>{
+  const data=auxiliaryTopicsFixture(),storage=new Map(),app=browser({data,storage});await settle();
+  await selectFixtureSession(app,data);app.elements.get('mind-auxiliary-topics').click();
+  app.cards('topics').find(card=>card.dataset.key==='topic:topic-1').click();
+  const next=app.elements.get('mind-questions').querySelectorAll('button').find(button=>button.getAttribute('aria-label')==='다음 보조 항목 노드');
+  next.click();const expected=clone(app.state());
+  assert.equal(app.cards('questions')[0].dataset.nodeId,'aux-item-8');
+  const restored=browser({data,storage,seed:{}});await settle();
+  assert.deepEqual(restored.state(),expected);
+  assert.equal(restored.elements.get('mind-auxiliary-topics').getAttribute('aria-pressed'),'true');
+  assert.equal(restored.cards('questions')[0].dataset.nodeId,'aux-item-8');
+  restored.elements.get('mind-primary-topics').click();
+  assert.equal(restored.state().topicGroup,undefined);
+  assert.equal(restored.state().topic,null);
+});
+
+test('Q&A groups auxiliary choices separately and can read their stored non-question items',async()=>{
+  const data=auxiliaryTopicsFixture(),app=browser({data});await settle();app.elements.get('qa-mode').click();
+  const control=app.elements.get('qa-topic'),group=control.querySelector('optgroup');
+  assert.equal(group.getAttribute('label'),'보조 정보 2개');
+  assert.deepEqual(group.options.map(option=>option.value),['topic:topic-0','topic:topic-1']);
+  assert.ok(control.children.filter(child=>child.tagName==='OPTION').every(option=>!group.options.some(aux=>aux.value===option.value)));
+  control.value='topic:topic-0';control.dispatchEvent({type:'change'});
+  assert.equal(app.elements.get('qa-timeline').querySelector('.auxiliary-item').dataset.nodeId,'reviewed-decision');
+});
+
+test('topic move and restore persist across a fresh page and select the correct destination page',async()=>{
+  const data=fixture(),storage=new Map();
+  data.context.session.topicDisplay={status:'default',sourceMapSha256:'a'.repeat(64),revision:'0'.repeat(64)};
+  const before=clone(data),server=clone(data.context);let version=0;
+  const displayEdit=async request=>{
+    assert.deepEqual(Object.keys(request).sort(),['group','revision','session','sourceMapSha256','topic']);
+    assert.equal(request.revision,String(version).repeat(64));version++;
+    const result={saved:true,session:data.sessionId,topic:request.topic,group:request.group,
+      auxiliaryTopicIds:request.group==='auxiliary'?[request.topic]:[],primaryTopicIds:request.group==='primary'?[request.topic]:[],
+      topicDisplay:{status:'active',sourceMapSha256:'a'.repeat(64),revision:String(version).repeat(64)}};
+    server.session.topicDisplay=result.topicDisplay;
+    server.analysis.structure.find(node=>node.id===request.topic).displayGroup=request.group;
+    return {ok:true,status:200,json:async()=>result};
+  };
+  const app=browser({data,storage,seed:{},messages:()=>server,displayEdit});await settle();
+  await selectFixtureSession(app,data);app.pager('topics','next').click();app.pager('topics','next').click();
+  app.cards('topics').find(card=>card.dataset.key==='topic:topic-17').click();
+  assert.equal(app.elements.get('mind-topic-edit').disabled,false);
+  app.elements.get('mind-topic-edit').click();await settle();
+  assert.equal(app.state().topicGroup,'auxiliary');assert.equal(app.selected('topics').dataset.key,'topic:topic-17');
+  assert.match(app.elements.get('mind-topic-edit-status').textContent,/설정이 저장/);
+  const restored=browser({data,storage,seed:{},messages:()=>server,displayEdit});await settle();
+  assert.equal(restored.elements.get('mind-topic-edit').textContent,'기본 목록으로 복원');
+  restored.elements.get('mind-topic-edit').click();await settle();
+  assert.equal(restored.state().topicGroup,undefined);assert.equal(restored.state().pages[1],2);
+  assert.equal(restored.selected('topics').dataset.key,'topic:topic-17');
+  assert.equal(restored.elements.get('mind-topic-edit').textContent,'보조 정보로 이동');
+  assert.deepEqual(data,before);
+});
+
+test('pending or conflicting saves cannot duplicate requests or change local grouping',async()=>{
+  const data=fixture();data.context.session.topicDisplay={status:'default',sourceMapSha256:'a'.repeat(64),revision:'0'.repeat(64)};
+  const pending=deferred(),app=browser({data,storage:new Map([[stateKey,JSON.stringify(data.selection)]]),displayEdit:()=>pending.promise});await settle();
+  app.elements.get('mind-topic-edit').click();app.elements.get('mind-topic-edit').click();await settle();
+  assert.equal(app.displayRequests.length,1);assert.equal(app.elements.get('mind-topic-edit').disabled,true);
+  pending.resolve({ok:false,status:409});await settle();
+  assert.equal(app.state().topicGroup,undefined);assert.equal(app.selected('topics').dataset.key,data.selection.topic);
+  assert.match(app.elements.get('mind-topic-edit-status').textContent,/새로고침/);
+});
+
+test('offline snapshots offer no preference mutation even with saved edit metadata',async()=>{
+  const data=fixture();data.selection.pages[0]=0;
+  data.context.session.topicDisplay={status:'default',sourceMapSha256:'a'.repeat(64),revision:'0'.repeat(64)};
+  const app=browser({data,protocol:'file:',storage:new Map([[stateKey,JSON.stringify(data.selection)]])});await settle();
+  assert.equal(app.elements.get('mind-topic-edit').disabled,true);app.elements.get('mind-topic-edit').click();await settle();
+  assert.equal(app.elements.get('mind-topic-name').disabled,true);
+  assert.equal(app.elements.get('mind-topic-name-save').disabled,true);app.elements.get('mind-topic-name-save').click();await settle();
+  assert.equal(app.requests.length,0);
+});
+
+test('name drafts survive catalog refresh and saved aliases survive reload without losing question selection',async()=>{
+  const data=fixture(),storage=new Map([[stateKey,JSON.stringify(data.selection)]]);
+  data.context.session.topicDisplay={status:'default',sourceMapSha256:'a'.repeat(64),revision:'0'.repeat(64)};
+  const before=clone(data),server=clone(data.context);let version=0;
+  const displayEdit=async request=>{
+    assert.deepEqual(Object.keys(request).sort(),['displayName','revision','session','sourceMapSha256','topic']);
+    const node=server.analysis.structure.find(node=>node.id===request.topic);
+    if(request.displayName===null)delete node.displayTitle;else node.displayTitle=request.displayName;
+    server.session.topicDisplay={status:'active',sourceMapSha256:'a'.repeat(64),revision:String(++version).repeat(64)};
+    return {ok:true,status:200,json:async()=>({saved:true,session:data.sessionId,topic:request.topic,operation:'name',displayName:request.displayName,
+      displayNames:request.displayName===null?{}:{[request.topic]:request.displayName},auxiliaryTopicIds:[],primaryTopicIds:[],topicDisplay:server.session.topicDisplay})};
+  };
+  const app=browser({data,storage,seed:{},messages:()=>server,displayEdit});await settle();
+  const input=app.elements.get('mind-topic-name'),alias='<img src=x onerror=unsafe()> 표시 이름';
+  input.value=alias;input.dispatchEvent({type:'input'});
+  app.setCatalog(()=>({sessions:data.sessions.map(s=>({...s,messageCount:s.messageCount+1}))}));await app.advance(5000);
+  assert.equal(input.value,alias,'polling must not overwrite the draft');
+  app.elements.get('mind-topic-name-save').click();await settle();
+  assert.equal(app.selected('topics').querySelector('.name').textContent,alias);
+  assert.equal(app.selected('topics').querySelector('img'),null);
+  assert.equal(app.selected('questions').dataset.nodeId,'q12');assert.deepEqual(app.state(),data.selection);
+  assert.equal(app.elements.get('mind-topic-original-name').textContent,'원래 이름: Topic 12');
+  const restored=browser({data,storage,seed:{},messages:()=>server,displayEdit});await settle();
+  assert.equal(restored.elements.get('mind-topic-name').value,alias);
+  assert.equal(restored.selected('questions').dataset.nodeId,'q12');
+  restored.elements.get('mind-topic-name-reset').click();await settle();
+  assert.equal(restored.selected('topics').querySelector('.name').textContent,'Topic 12');
+  assert.equal(restored.elements.get('mind-topic-name').value,'Topic 12');
+  assert.equal(restored.elements.get('mind-topic-name-reset').disabled,true);
+  assert.deepEqual(restored.state(),data.selection);assert.deepEqual(data,before);
+});
+
+test('invalid name input cannot issue a save request or alter the displayed topic',async()=>{
+  const data=fixture();data.context.session.topicDisplay={status:'default',sourceMapSha256:'a'.repeat(64),revision:'0'.repeat(64)};
+  const app=browser({data,storage:new Map([[stateKey,JSON.stringify(data.selection)]])});await settle();
+  for(const value of ['', ' ', 'x'.repeat(121), 'bad\nname']) {
+    const input=app.elements.get('mind-topic-name');input.value=value;input.dispatchEvent({type:'input'});
+    app.elements.get('mind-topic-name-save').click();await settle();
+    assert.equal(app.displayRequests.length,0);assert.match(app.elements.get('mind-topic-edit-status').textContent,/1~120자/);
+    assert.equal(app.selected('topics').querySelector('.name').textContent,'Topic 12');
+  }
+});
+
+function sessionNameFixture() {
+  const data=fixture();
+  for(const session of data.sessions)session.sessionDisplay={status:'default',revision:'0'.repeat(64)};
+  const sessions=clone(data.sessions),context=clone(data.context);let version=0;
+  const edit=async request=>{
+    assert.deepEqual(Object.keys(request).sort(),['displayName','revision','session']);
+    const session=sessions.find(row=>row.id===request.session);assert.equal(request.revision,session.sessionDisplay.revision);
+    if(request.displayName===null)delete session.displayTitle;else session.displayTitle=request.displayName;
+    session.sessionDisplay={status:request.displayName===null?'default':'active',revision:String(++version).repeat(64)};
+    if(context.session.id===session.id)context.session=clone(session);
+    return {ok:true,status:200,json:async()=>({saved:true,session:session.id,displayName:request.displayName,sessionDisplay:session.sessionDisplay})};
+  };
+  return {data,sessions,context,edit};
+}
+
+test('session name drafts, save, reload and reset preserve the original title and selected branch',async()=>{
+  const {data,sessions,context,edit}=sessionNameFixture(),before=clone(data);
+  const storage=new Map([[stateKey,JSON.stringify(data.selection)]]);
+  const options={data,storage,seed:{},catalog:()=>({sessions}),messages:()=>context,sessionEdit:edit};
+  const app=browser(options);await settle();
+  const input=app.elements.get('mind-session-name'),alias='<img src=x> 읽기용 세션';
+  input.value=alias;input.dispatchEvent({type:'input'});
+  app.setCatalog(()=>({sessions:sessions.map(row=>({...row,messageCount:row.messageCount+1}))}));await app.advance(5000);
+  assert.equal(input.value,alias);
+  app.elements.get('mind-session-name-save').click();await settle();
+  assert.equal(app.selected('sessions').querySelector('.name').textContent,alias);
+  assert.equal(app.selected('sessions').querySelector('img'),null);
+  assert.equal(app.elements.get('mind-session-original-name').textContent,'원래 이름: '+data.context.session.title);
+  assert.deepEqual(app.state(),data.selection);
+  const restored=browser(options);await settle();
+  assert.equal(restored.elements.get('mind-session-name').value,alias);
+  assert.equal(restored.selected('questions').dataset.nodeId,'q12');
+  restored.elements.get('mind-session-name-reset').click();await settle();
+  assert.equal(restored.selected('sessions').querySelector('.name').textContent,data.context.session.title);
+  assert.deepEqual(restored.state(),data.selection);assert.deepEqual(data,before);
+});
+
+test('an unanalysed session can be named without an analysis context or source graph change',async()=>{
+  const {data,sessions,context,edit}=sessionNameFixture();
+  data.sessions[0].hasAnalysis=false;sessions[0].hasAnalysis=false;
+  const before=clone(data),app=browser({data,catalog:()=>({sessions}),messages:()=>context,sessionEdit:edit});await settle();
+  app.cards('sessions').find(card=>card.dataset.key==='session-0').click();
+  assert.equal(app.elements.get('mind-session-name-save').disabled,false);
+  app.elements.get('mind-session-name').value='분석 전 세션';app.elements.get('mind-session-name').dispatchEvent({type:'input'});
+  app.elements.get('mind-session-name-save').click();await settle();
+  assert.equal(app.selected('sessions').querySelector('.name').textContent,'분석 전 세션');
+  assert.equal(app.cards('topics').length,0);
+  assert.equal(app.state().session,'session-0');assert.deepEqual(data,before);
+});
+
+test('an older catalogue response cannot undo an acknowledged session name',async()=>{
+  const {data,sessions,context,edit}=sessionNameFixture(),pending=deferred();
+  const app=browser({data,storage:new Map([[stateKey,JSON.stringify(data.selection)]]),catalog:()=>({sessions}),messages:()=>context,sessionEdit:edit});await settle();
+  app.setCatalog(()=>pending.promise);await app.advance(5000);
+  app.elements.get('mind-session-name').value='새로 저장된 이름';app.elements.get('mind-session-name').dispatchEvent({type:'input'});
+  app.elements.get('mind-session-name-save').click();await settle();
+  assert.equal(app.selected('sessions').querySelector('.name').textContent,'새로 저장된 이름');
+  pending.resolve({sessions:clone(data.sessions)});await settle();
+  assert.equal(app.selected('sessions').querySelector('.name').textContent,'새로 저장된 이름');
+  app.setCatalog(()=>({sessions}));await app.advance(5000);
+  assert.equal(app.selected('sessions').querySelector('.name').textContent,'새로 저장된 이름');
+});
+
+test('renaming a session found by its old alias keeps it selected and retains original-title search',async()=>{
+  const {data,sessions,context,edit}=sessionNameFixture();
+  sessions[36].displayTitle='Old alias';context.session=clone(sessions[36]);
+  const selection={...data.selection,pages:[0,0,1,0],filters:{query:'Old alias',project:''}};
+  const app=browser({data,storage:new Map([[stateKey,JSON.stringify(selection)]]),catalog:()=>({sessions}),messages:()=>context,sessionEdit:edit});await settle();
+  app.elements.get('mind-session-name').value='New alias';app.elements.get('mind-session-name').dispatchEvent({type:'input'});
+  app.elements.get('mind-session-name-save').click();await settle();
+  assert.equal(app.state().session,data.sessionId);assert.equal(app.selected('questions').dataset.nodeId,'q12');
+  assert.equal(app.elements.get('query').value,'');assert.equal(app.state().pages[0],4);
+  app.elements.get('query').value=data.context.session.title;app.elements.get('query').dispatchEvent({type:'input'});
+  assert.equal(app.cards('sessions').length,1);assert.equal(app.selected('sessions').querySelector('.name').textContent,'New alias');
+});
+
+test('timeline uses session aliases while preserving original-title filtering and source identity',async()=>{
+  const data=lineageFixture(),before=clone(data);data.sessions[0].displayTitle='상위 세션 별칭';data.sessions[36].displayTitle='작업 세션 별칭';
+  const app=timelineBrowser({sessions:data.sessions,hash:'#session=session-36&message=synthetic-message'});await settle();
+  assert.equal(app.elements.get('conversation-title').textContent,'작업 세션 별칭');
+  app.elements.get('session-search').value=data.sessions[36].title;app.elements.get('session-search').dispatchEvent({type:'input'});
+  assert.equal(app.cards().length,1);assert.match(app.cards()[0].textContent,/작업 세션 별칭/);
+  assert.equal(data.sessions[36].title,before.sessions[36].title);
+  assert.equal(data.sessions[36].id,before.sessions[36].id);
+});
+
+function answerEvidenceFixture() {
+  const data=fixture(),question=data.graph.nodes.find(node=>node.id==='q12');
+  question.classification='answered_question';question.status='answered';
+  data.context.messages.find(message=>message.id==='m12').index=36;
+  data.context.analysis.anchors['source-q12'][0].index=36;
+  data.context.messages.push({id:'raw-answer-39',index:38,role:'assistant',timestamp:'2026-10-23T00:01:00.000Z'});
+  data.context.analysis.anchors['source-q12'].push({messageId:'raw-answer-39',index:38,sourceMessageId:'m39'});
+  data.context.analysis.assistantEvidence={'source-q12':[{messageId:'raw-answer-39',index:38,sourceMessageId:'m39',quotes:['<img src=x onerror=alert(1)> Stored answer excerpt'],evidenceCount:1}]};
+  return data;
+}
+
+function itemTitleFixture() {
+  const data=answerEvidenceFixture();
+  data.context.session.topicDisplay={status:'default',sourceMapSha256:'a'.repeat(64),revision:'0'.repeat(64)};
+  data.graph.nodes.push({id:'stored-answer',title:'Stored answer title',summary:'',project:'test',classification:'assistant_statement',
+    provenance:[{session_id:data.sessionId,source_node:'source-answer',evidence:[]}]});
+  data.graph.edges.push({id:'stored-answer-edge',from:'stored-answer',to:'q12',type:'answers',sessions:[data.sessionId]});
+  data.context.analysis.structure.find(node=>node.id==='topic-12').childIds.push('source-answer');
+  data.context.analysis.structure.push({id:'source-answer',kind:'item',parentId:'topic-12'});
+  data.context.analysis.relations.push({id:'original-answer-edge',from:'source-answer',to:'source-q12',type:'answers'});
+  data.context.messages.push({id:'raw-linked-answer',index:40,role:'assistant',timestamp:''});
+  data.context.analysis.anchors['source-answer']=[{messageId:'raw-linked-answer',index:40,sourceMessageId:'stored-answer-message'}];
+  data.context.analysis.itemLabels=Object.fromEntries(data.graph.nodes.map(node=>[node.provenance[0].source_node,{title:node.title}]));
+  data.context.analysis.evidenceTitles={};
+  const server=clone(data.context);let version=0;
+  const itemEdit=async request=>{
+    assert.equal(request.session,data.sessionId);assert.equal(request.revision,server.session.topicDisplay.revision);
+    assert.ok(!Object.hasOwn(request,'quote')&&!Object.hasOwn(request,'content'));
+    if(request.evidenceMessage) {
+      const titles=server.analysis.evidenceTitles[request.item] ||= {};
+      if(request.displayTitle===null)delete titles[request.evidenceMessage];else titles[request.evidenceMessage]=request.displayTitle;
+      if(!Object.keys(titles).length)delete server.analysis.evidenceTitles[request.item];
+    } else {
+      const label=server.analysis.itemLabels[request.item];
+      if(request.displayTitle===null)delete label.displayTitle;else label.displayTitle=request.displayTitle;
+    }
+    server.session.topicDisplay={status:'active',sourceMapSha256:'a'.repeat(64),revision:String(++version).repeat(64)};
+    return {ok:true,status:200,json:async()=>({saved:true,session:data.sessionId,item:request.item,evidenceMessage:request.evidenceMessage || null,
+      displayTitle:request.displayTitle,auxiliaryTopicIds:[],primaryTopicIds:[],displayNames:{},
+      itemLabels:clone(server.analysis.itemLabels),evidenceTitles:clone(server.analysis.evidenceTitles),topicDisplay:server.session.topicDisplay})};
+  };
+  return {data,server,itemEdit};
+}
+
+test('question display titles save, survive reload and restore without changing source titles or selection',async()=>{
+  const {data,server,itemEdit}=itemTitleFixture(),before=clone(data),storage=new Map([[stateKey,JSON.stringify(data.selection)]]);
+  const options={data,storage,seed:{},messages:()=>server,itemEdit},app=browser(options);await settle();
+  app.elements.get('mind-question-title-edit').click();assert.equal(app.elements.get('item-title-dialog').open,true);
+  const alias='<img src=x> 읽기 쉬운 질문';
+  app.elements.get('item-title-input').value=alias;app.elements.get('item-title-input').dispatchEvent({type:'input'});
+  app.elements.get('item-title-save').click();await settle();
+  assert.equal(app.selected('questions').querySelector('.name').textContent,alias);
+  assert.equal(app.selected('questions').querySelector('img'),null);
+  assert.equal(app.elements.get('item-title-original').textContent,'원래 제목: Question 12');
+  assert.equal(app.itemRequests[0].item,'source-q12');assert.deepEqual(app.state(),data.selection);
+  const reloaded=browser(options);await settle();
+  assert.equal(reloaded.selected('questions').querySelector('.name').textContent,alias);
+  reloaded.elements.get('mind-question-title-edit').click();reloaded.elements.get('item-title-reset').click();await settle();
+  assert.equal(reloaded.selected('questions').querySelector('.name').textContent,'Question 12');
+  assert.deepEqual(data,before);assert.deepEqual(reloaded.state(),data.selection);
+});
+
+test('linked answers and quote-evidence titles stay distinct and keep their original source navigation',async()=>{
+  const {data,server,itemEdit}=itemTitleFixture(),before=clone(data),app=browser({data,storage:new Map([[stateKey,JSON.stringify(data.selection)]]),messages:()=>server,itemEdit});await settle();
+  app.elements.get('mind-answers').querySelector('.answer-title-entry').querySelector('.item-title-trigger').click();
+  app.elements.get('item-title-input').value='연결 답변 표시 제목';app.elements.get('item-title-input').dispatchEvent({type:'input'});
+  app.elements.get('item-title-save').click();await settle();app.elements.get('item-title-close').click();
+  const answer=app.cards('answers').find(card=>card.dataset.nodeId==='stored-answer');
+  assert.equal(answer.querySelector('.name').textContent,'연결 답변 표시 제목');assert.equal(answer.dataset.edgeIds,'stored-answer-edge');
+  app.elements.get('mind-answers').querySelector('.answer-evidence-entry').querySelector('.item-title-trigger').click();
+  app.elements.get('item-title-input').value='답변 근거 표시 제목';app.elements.get('item-title-input').dispatchEvent({type:'input'});
+  app.elements.get('item-title-save').click();await settle();app.elements.get('item-title-close').click();
+  const evidence=app.cards('answers').find(card=>card.dataset.kind==='answer-evidence');
+  assert.equal(evidence.querySelector('.name').textContent,'답변 근거 표시 제목');
+  assert.match(evidence.querySelector('.mind-meta').textContent,/원문 #39/);
+  assert.equal(evidence.querySelector('.answer-evidence-preview').textContent,data.context.analysis.assistantEvidence['source-q12'][0].quotes[0]);
+  assert.equal(evidence.dataset.nodeId,undefined);assert.equal(evidence.dataset.messageId,'raw-answer-39');
+  evidence.click();await settle();assert.equal(app.navigation[0].message,'raw-answer-39');
+  assert.equal(app.itemRequests[0].item,'source-answer');assert.equal(app.itemRequests[1].item,'source-q12');
+  assert.equal(app.itemRequests[1].evidenceMessage,'raw-answer-39');assert.deepEqual(data,before);
+});
+
+test('conflicting item edits and offline snapshots do not alter displayed titles',async()=>{
+  const {data}=itemTitleFixture(),storage=new Map([[stateKey,JSON.stringify(data.selection)]]);
+  const app=browser({data,storage,itemEdit:async()=>({ok:false,status:409})});await settle();
+  app.elements.get('mind-question-title-edit').click();app.elements.get('item-title-input').value='Not saved';
+  app.elements.get('item-title-input').dispatchEvent({type:'input'});app.elements.get('item-title-save').click();await settle();
+  assert.match(app.elements.get('item-title-status').textContent,/새로고침/);
+  assert.equal(app.selected('questions').querySelector('.name').textContent,'Question 12');
+  data.selection.pages[0]=0;
+  const offline=browser({data,protocol:'file:',storage:new Map([[stateKey,JSON.stringify(data.selection)]])});await settle();
+  offline.elements.get('mind-question-title-edit').click();assert.equal(offline.elements.get('item-title-save').disabled,true);
+  offline.elements.get('item-title-save').click();await settle();assert.equal(offline.requests.length,0);
+});
+
+test('an item editor opened during source loading becomes editable when the context arrives',async()=>{
+  const {data,server,itemEdit}=itemTitleFixture(),pending=deferred();
+  const app=browser({data,storage:new Map([[stateKey,JSON.stringify(data.selection)]]),messages:()=>pending.promise,itemEdit});await settle();
+  app.elements.get('mind-question-title-edit').click();assert.equal(app.elements.get('item-title-save').disabled,true);
+  pending.resolve({...server,total:server.messages.length,offset:0,revision:'ready'});await settle();
+  assert.equal(app.elements.get('item-title-dialog').open,true);assert.equal(app.elements.get('item-title-save').disabled,false);
+});
+
+test('a merged graph node keeps display titles separate for each original question occurrence',async()=>{
+  const {data,server,itemEdit}=itemTitleFixture();
+  data.graph.nodes.find(node=>node.id==='q12').provenance.push({session_id:data.sessionId,source_node:'source-alternate',evidence:[]});
+  for(const context of [data.context,server]) {
+    context.analysis.structure.find(node=>node.id==='topic-12').childIds.push('source-alternate');
+    context.analysis.structure.push({id:'source-alternate',kind:'item',parentId:'topic-12'});
+    context.analysis.anchors['source-alternate']=[{messageId:'m5',index:5,sourceMessageId:'alternate-message'}];
+    context.analysis.itemLabels['source-alternate']={title:'Other original question'};
+  }
+  data.selection.pages[2]=2;
+  const before=clone(data),app=browser({data,storage:new Map([[stateKey,JSON.stringify(data.selection)]]),messages:()=>server,itemEdit});await settle();
+  app.elements.get('mind-question-title-edit').click();app.elements.get('item-title-input').value='Only the selected occurrence';
+  app.elements.get('item-title-input').dispatchEvent({type:'input'});app.elements.get('item-title-save').click();await settle();
+  assert.equal(app.selected('questions').querySelector('.name').textContent,'Only the selected occurrence');
+  app.elements.get('item-title-close').click();app.pager('questions','previous').click();app.pager('questions','previous').click();
+  const alternate=app.cards('questions').find(card=>card.dataset.sourceNode==='source-alternate');
+  assert.equal(alternate.dataset.nodeId,'q12');assert.equal(alternate.querySelector('.name').textContent,'Other original question');
+  app.elements.get('qa-mode').click();app.elements.get('query').value='Only the selected occurrence';app.elements.get('query').dispatchEvent({type:'input'});
+  assert.equal(app.elements.get('qa-timeline').querySelectorAll('.qa-row').length,1,'the alias search belongs only to its source occurrence');
+  assert.deepEqual(data,before);
+});
+
+test('mind map shows stored answer evidence without an answers edge and opens exact assistant message 39',async()=>{
+  const data=answerEvidenceFixture(),before=clone(data),storage=new Map([[stateKey,JSON.stringify(data.selection)]]);
+  const app=browser({data,storage});await settle();
+  assert.equal(app.selected('questions')?.dataset.nodeId,'q12');
+  assert.match(app.selected('questions').textContent,/원문 #37 · 답변 연결 0개 · 답변 근거 1개/);
+  const cards=app.cards('answers');assert.equal(cards.length,1);
+  assert.equal(cards[0].dataset.kind,'answer-evidence');
+  assert.equal(cards[0].dataset.messageId,'raw-answer-39');
+  assert.match(cards[0].textContent,/어시스턴트 원문 #39/);
+  assert.equal(cards[0].querySelector('.answer-evidence-preview').textContent,data.context.analysis.assistantEvidence['source-q12'][0].quotes[0]);
+  assert.equal(cards[0].querySelector('img'),null);
+  cards[0].click();await settle();
+  assert.deepEqual(app.navigation,[{type:'context-graph-open-source',session:data.sessionId,message:'raw-answer-39'}]);
+  assert.deepEqual(app.state(),data.selection);
+  assert.deepEqual(data,before,'virtual evidence cards must not add graph nodes/edges or alter evidence');
+});
+
+test('chronological questions expose the same answer evidence and exact source action',async()=>{
+  const data=answerEvidenceFixture(),app=browser({data});await settle();
+  app.elements.get('qa-mode').click();
+  const row=app.elements.get('qa-timeline').querySelectorAll('.qa-row').find(item=>item.dataset.questionId==='q12');
+  const card=row.querySelector('.answer-evidence-card');assert.ok(card);
+  assert.match(row.textContent,/별도 답변 관계 없음/);
+  card.click();await settle();
+  assert.deepEqual(app.navigation,[{type:'context-graph-open-source',session:data.sessionId,message:'raw-answer-39'}]);
+  assert.deepEqual(JSON.parse(app.storage.get('context-graph-qa-return')),{node:'q12',session:data.sessionId});
+});
+
+test('offline answer evidence offers existing question details without raw quotation or network requests',async()=>{
+  const data=answerEvidenceFixture();delete data.context.analysis.assistantEvidence['source-q12'][0].quotes;
+  data.selection.pages[0]=0;
+  const storage=new Map([[stateKey,JSON.stringify(data.selection)]]),app=browser({data,storage,protocol:'file:'});await settle();
+  const card=app.cards('answers')[0];assert.ok(card);
+  assert.equal(card.querySelector('.answer-evidence-preview'),null);
+  assert.match(card.textContent,/질문·근거 보기/);
+  card.click();await settle();
+  assert.equal(app.elements.get('detail-panel').hidden,false);
+  assert.deepEqual(app.requests,[]);
+});

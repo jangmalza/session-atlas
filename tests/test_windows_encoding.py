@@ -1,4 +1,4 @@
-"""Regression tests for Windows cp949 subprocess encoding (no Codex model calls)."""
+"""Windows subprocess encoding and executable resolution (no model calls)."""
 from pathlib import Path
 from unittest.mock import patch
 import json
@@ -27,7 +27,7 @@ class WindowsEncodingTests(unittest.TestCase):
                 encoding='utf-8', errors='replace', capture_output=True, check=True)
         self.assertEqual(got.stdout, sample)
 
-    def test_pipeline_passes_utf8_to_codex_and_node(self):
+    def test_pipeline_passes_utf8_to_resolved_codex_and_node(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp)
             con = cg.connect(home / 'knowledge.db')
@@ -44,15 +44,35 @@ class WindowsEncodingTests(unittest.TestCase):
                 (skill / 'references').mkdir()
                 (skill / 'scripts/conversation-map.mjs').write_text('// mock')
                 (skill / 'references/analysis.schema.json').write_text('{}')
+                codex_executable = str(home / 'Codex CLI' / 'codex.cmd')
                 actions = []
+                # A language-unspecified cached draft must not bypass the new
+                # Korean request or cause source evidence to be translated.
+                original = cg.transcript(con, SID)
+                schema = Path(cg.__file__).with_name('analysis-output.schema.json')
+                legacy_version = 'draft-v2|' + cg.digest(schema.read_text(encoding='utf-8'))
+                legacy_key = cg.digest(legacy_version + cg.serialize_transcript(original))[:32]
+                cache_dir = home / 'analysis-cache' / cg.digest(SID)[:24]
+                cache_dir.mkdir(parents=True)
+                legacy_cache = cache_dir / f'1-{legacy_key}.json'
+                legacy_text = json.dumps({'nodes': [{'key': 'legacy', 'kind': 'topic',
+                                                    'title': 'Old English topic', 'summary': ''}]})
+                legacy_cache.write_text(legacy_text, encoding='utf-8')
 
                 def fake_run(cmd, **kw):
                     self.assertEqual(kw.get('encoding'), 'utf-8', f'No explicit UTF-8 for: {cmd}')
                     self.assertEqual(kw.get('errors'), 'replace')
                     actions.append(cmd[0:3])
-                    if cmd[0] == 'codex':
+                    if cmd[1] == 'exec':
+                        self.assertEqual(cmd[0], codex_executable)
                         self.assertIn('\u0080', kw['input'])
+                        request = kw['input'].split('TRANSCRIPT PART:\n', 1)[0]
+                        self.assertIn('Write all generated prose in Korean', request)
+                        self.assertIn('evidence quotes', request)
+                        self.assertIn('never translate or paraphrase them', request)
+                        self.assertIn('enum values', request)
                         chunk = json.loads(kw['input'].split('TRANSCRIPT PART:\n', 1)[1])
+                        self.assertEqual(chunk, original)
                         m = chunk['messages'][0]
                         draft = {'schemaVersion': '1', 'title': 'Project',
                                  'coverage': {'status': 'complete'}, 'nodes': [
@@ -72,12 +92,17 @@ class WindowsEncodingTests(unittest.TestCase):
                         ], 'relations': []}), encoding='utf-8')
                     return subprocess.CompletedProcess(cmd, 0, stdout='', stderr='')
 
-                with patch.object(cg.shutil, 'which', return_value='binary'), \
+                with patch.object(cg.shutil, 'which', side_effect={'codex': codex_executable, 'node': 'node'}.get), \
                      patch.object(cg.subprocess, 'run', side_effect=fake_run):
                     result = cg.auto_analyze(con, SID, cm, home)
                 self.assertIn('analyzed & imported', result)
-                self.assertEqual([x[0] for x in actions], ['codex', 'node', 'node'])
+                self.assertEqual([x[0] for x in actions], [codex_executable, 'node', 'node'])
                 self.assertEqual(con.execute('select count(*) from session_maps').fetchone()[0], 1)
+                self.assertEqual(legacy_cache.read_text(encoding='utf-8'), legacy_text)
+                fresh = [path for path in cache_dir.glob('*.json') if path != legacy_cache]
+                self.assertEqual(len(fresh), 1)
+                cached = json.loads(fresh[0].read_text(encoding='utf-8'))
+                self.assertEqual(cached['nodes'][1]['evidence'][0]['quote'], original['messages'][0]['content'])
             finally:
                 con.close()
 

@@ -11,17 +11,24 @@ permissions:
 
 jobs:
   test:
-    name: Unit tests (${{ matrix.os }})
+    name: Unit tests (${{ matrix.os }}, Python ${{ matrix.python }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
+        python: ['3.13', '3.14']
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.13'
+          python-version: ${{ matrix.python }}
       - name: Run regression tests
         run: python -m unittest discover -s tests -v
+      - name: Set up Node for question and answer regression tests
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify question ordering, answer links and viewer lifecycle
+        run: node --test tests/qa_timeline.test.cjs tests/session_mindmap.test.cjs tests/mindmap_lifecycle.test.cjs

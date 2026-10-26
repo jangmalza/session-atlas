@@ -71,6 +71,7 @@ class ChunkTests(unittest.TestCase):
                 check_count = []
                 def fake_run(cmd, **kwargs):
                     if cmd[0] == "codex":
+                        self.assertIn('Write all generated prose in Korean', kwargs['input'].split('TRANSCRIPT PART:\n', 1)[0])
                         data = json.loads(kwargs["input"].split("TRANSCRIPT PART:\n", 1)[1])
                         chunks.append(data)
                         draft = {"schemaVersion": "1", "title": "Demo", "coverage": {"status": "complete"},
@@ -99,7 +100,7 @@ class ChunkTests(unittest.TestCase):
                         raise AssertionError(str(cmd))
                     return type("Process", (), {"returncode": 0, "stderr": "", "stdout": ""})()
 
-                with patch.object(cg.shutil, "which", return_value="fake"), patch.object(cg.subprocess, "run", side_effect=fake_run):
+                with patch.object(cg.shutil, "which", side_effect=lambda name: name), patch.object(cg.subprocess, "run", side_effect=fake_run):
                     result = cg.auto_analyze(con, SID, skill.parents[3], root)
                     self.assertIn("chunk(s)", result)
                     self.assertGreaterEqual(len(chunks), 4)
@@ -134,7 +135,7 @@ class ChunkTests(unittest.TestCase):
                             return type("Process", (), {"returncode": 1, "stderr": "intentional", "stdout": ""})()
                         Path(cmd[cmd.index("-o") + 1]).write_text("{}")
                     return type("Process", (), {"returncode": 0, "stderr": "", "stdout": ""})()
-                with patch.object(cg.shutil, "which", return_value="fake"), patch.object(cg.subprocess, "run", side_effect=fake_run):
+                with patch.object(cg.shutil, "which", side_effect=lambda name: name), patch.object(cg.subprocess, "run", side_effect=fake_run):
                     with self.assertRaisesRegex(RuntimeError, "chunk 2/"):
                         cg.auto_analyze(con, SID, skill.parents[3], root)
                 self.assertEqual(con.execute("SELECT count(*) FROM session_maps").fetchone()[0], 0)

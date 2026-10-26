@@ -21,9 +21,9 @@ class ContextGraphTests(unittest.TestCase):
         self.addCleanup(self.db.close)
         self.events = [
             {"type":"session_meta","payload":{"id":SID,"cwd":r"C:\\dev\\Project"}},
-            {"type":"event_msg","payload":{"type":"user_message","message":"Use SQLite"}},
-            {"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Use SQLite"}]}},
-            {"type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Agreed."}]}},
+            {"type":"event_msg","timestamp":"2026-10-20T00:00:00Z","payload":{"type":"user_message","message":"Use SQLite"}},
+            {"type":"response_item","timestamp":"2026-10-20T00:00:00Z","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Use SQLite"}]}},
+            {"type":"response_item","timestamp":"2026-10-20T00:00:01Z","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Agreed."}]}},
             {"type":"response_item","payload":{"type":"message","role":"developer","content":[{"type":"input_text","text":"secret system instruction"}]}},
         ]
         self.path.write_text("".join(json.dumps(x)+"\n" for x in self.events),encoding="utf-8")

@@ -1,0 +1,41 @@
+#cm-question-order {
+  padding: 0;
+  width: min(900px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 40px);
+  max-height: calc(100dvh - 40px);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+  font: inherit;
+}
+#cm-question-order[open] { display: flex; flex-direction: column; }
+#cm-question-order::backdrop { background: rgb(0 0 0 / 0.45); }
+.qo-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 20px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.qo-head h2 { margin: 0; font-size: 20px; }
+.qo-intro { margin: 0; padding: 12px 20px; color: var(--text-2); font-size: 13px; flex-shrink: 0; }
+.qo-scroll { min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 0 20px 20px; }
+.qo-scroll h3 { margin: 12px 0; font-size: 16px; }
+.qo-explanation { color: var(--text-3); font-size: 13px; }
+.qo-list { list-style: none; padding: 0; margin: 0 0 24px; display: grid; gap: 8px; }
+.qo-item { display: grid; grid-template-columns: 38px minmax(0, 1fr); gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; }
+.qo-rank { color: var(--accent); font-weight: 700; font-variant-numeric: tabular-nums; }
+.qo-main { min-width: 0; }
+.qo-link { color: var(--text); font-weight: 600; text-decoration: none; overflow-wrap: anywhere; }
+.qo-link:hover { color: var(--accent); text-decoration: underline; }
+.qo-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px; color: var(--text-3); font-size: 12px; overflow-wrap: anywhere; }
+.qo-classification { color: var(--accent); }
+.qo-note { color: var(--warn); }
+.qo-unconfirmed .qo-item { grid-template-columns: minmax(0, 1fr); }
+.qo-empty { color: var(--text-3); padding: 12px 0; }
+@media (max-width: 600px) {
+  #cm-question-order { width: calc(100vw - 16px); max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); }
+  .qo-head { padding: 12px; }
+  .qo-head h2 { font-size: 18px; }
+  .qo-intro { padding: 10px 12px; font-size: 12px; }
+  .qo-scroll { padding: 0 12px 12px; }
+  .qo-item { grid-template-columns: 28px minmax(0, 1fr); padding: 10px; gap: 6px; }
+}
+@media print { #cm-question-order, .cm-question-order-toggle { display: none !important; } }

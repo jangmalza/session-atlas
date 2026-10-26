@@ -141,7 +141,7 @@ class AttributionRecoveryTests(unittest.TestCase):
                         return completed(cmd)
                     raise AssertionError(f"unexpected command: {cmd}")
 
-                with patch.object(cg.shutil, "which", return_value="fake"), patch.object(cg.subprocess, "run", side_effect=fake_run):
+                with patch.object(cg.shutil, "which", side_effect=lambda name: name), patch.object(cg.subprocess, "run", side_effect=fake_run):
                     with self.assertRaisesRegex(RuntimeError, "relation-unknown-node"):
                         cg.auto_analyze(con, SID, cm, root)
                     previous_count = model_calls[0]
