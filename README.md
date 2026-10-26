@@ -1,4 +1,4 @@
-# Codex Context Graph (MVP)
+# Session Atlas (MVP)
 
 Local-first collector and cross-session knowledge graph for Codex CLI/Desktop session records. Python 3.10+; Windows 11 supported.
 
@@ -17,8 +17,8 @@ Local-first collector and cross-session knowledge graph for Codex CLI/Desktop se
 ## Quick start (Windows PowerShell)
 
 ```powershell
-git clone https://github.com/jangmalza/codex-context-graph.git
-cd codex-context-graph
+git clone https://github.com/jangmalza/session-atlas.git
+cd session-atlas
 python --version
 python .\context_graph.py scan
 python .\context_graph.py status
