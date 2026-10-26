@@ -71,7 +71,8 @@ class SessionMetadataTests(unittest.TestCase):
         self.assertEqual(meta["sessionKind"], "subagent")
         self.assertEqual(meta["parentSessionId"], "main")
         self.assertEqual(meta["rootSessionId"], "main")
-        self.assertEqual(meta["ownStartOffsets"][str(path)], sum(map(len, raw[:2])))
+        # Metadata keys use resolved paths; Windows TEMP can use an 8.3 alias.
+        self.assertEqual(meta["ownStartOffsets"][str(path.resolve())], sum(map(len, raw[:2])))
         self.assertFalse(meta["nativeTitleUsable"])
 
     def test_referenced_primary_fork_local_records_are_own(self):
@@ -83,7 +84,7 @@ class SessionMetadataTests(unittest.TestCase):
         self.assertTrue(meta["forked"])
         self.assertEqual(meta["parentSessionId"], "main")
         self.assertEqual(meta["rootSessionId"], "fork")
-        self.assertEqual(meta["ownStartOffsets"][str(path)], len(raw[0]))
+        self.assertEqual(meta["ownStartOffsets"][str(path.resolve())], len(raw[0]))
 
     def test_unverified_fork_never_uses_inherited_native_title(self):
         path, _ = self.file("fork", [record(role="user", content="inherited")], forked_from_id="main")
@@ -115,7 +116,7 @@ class SessionMetadataTests(unittest.TestCase):
             stream.write(b',"payload":{"role":"developer"}}\n')
         meta = self.read("helper", [path])
         self.assertTrue(meta["boundaryKnown"])
-        self.assertEqual(meta["ownStartOffsets"][str(path)], path.stat().st_size)
+        self.assertEqual(meta["ownStartOffsets"][str(path.resolve())], path.stat().st_size)
 
     def test_unknown_sources_schema_and_missing_files_remain_unknown(self):
         self.native([("helper", spawn("absent"), str(self.home / "missing.jsonl"))])
@@ -189,8 +190,8 @@ class SessionMetadataTests(unittest.TestCase):
         records[0]["payload"]["content"] = "A longer inherited record" * 100
         path, raw = self.file("helper", records, forked_from_id="main", subagent_history_start_ordinal=2)
         current = self.read("helper", [path])
-        self.assertGreater(current["ownStartOffsets"][str(path)], first["ownStartOffsets"][str(path)])
-        self.assertEqual(current["ownStartOffsets"][str(path)], sum(map(len, raw[:2])))
+        self.assertGreater(current["ownStartOffsets"][str(path.resolve())], first["ownStartOffsets"][str(path.resolve())])
+        self.assertEqual(current["ownStartOffsets"][str(path.resolve())], sum(map(len, raw[:2])))
         self.assertNotEqual(current["revision"], first["revision"])
 
     def test_native_wal_update_refreshes_provenance_and_revision_without_writes(self):
