@@ -1,6 +1,6 @@
 # Session Atlas (MVP)
 
-Local-first collector and cross-session knowledge graph for Codex CLI/Desktop session records. Python 3.10+; Windows 11 supported.
+Local-first conversation archive for Codex CLI/Desktop and local Claude Code transcripts. Python 3.10+; Python 3.14 is recommended for compressed archives. Windows 11 supported.
 
 > Experimental MVP. The automatic Codex analyzer has **not** been verified end-to-end on an authenticated installation. This is a reconstruction of conversation knowledge, not access to the model's actual internal context.
 
@@ -17,18 +17,52 @@ Local-first collector and cross-session knowledge graph for Codex CLI/Desktop se
 ## Quick start (Windows PowerShell)
 
 ```powershell
-git clone https://github.com/jangmalza/session-atlas.git
+git clone --branch feat/context-graph-mvp https://github.com/jangmalza/session-atlas.git
 cd session-atlas
 python --version
-python .\context_graph.py scan
-python .\context_graph.py status
-python .\context_graph.py graph --html .\output\graph.html --json .\output\graph.json
-Start-Process .\output\graph.html
+python .\context_graph.py --claude-home "$HOME\.claude" watch --live-dir "$HOME\.codex-context-graph\live" --port 8765
+# Open http://127.0.0.1:8765 in your browser. Ctrl+C stops this foreground run.
 ```
 
 By default, Codex sessions are read from `$env:CODEX_HOME` or `$HOME\.codex`. The SQLite database is written outside the repository to `$HOME\.codex-context-graph\knowledge.db`.
 
-The graph remains empty until you import semantic analyses or run the opt-in analyzer.
+The session list, full-text search, original-message reader and chronological request/response view work without model calls. Semantic topic/answer graphs use explicitly imported or requested analyses. Omit `--claude-home` to collect only Codex. Native Claude desktop/cloud chat stores are not imported; the adapter reads local Claude Code `projects/**/*.jsonl` text messages, preserves native message/parent UUIDs and excludes thinking/tool/API-error blocks. Helper transcripts remain separate from ordinary sessions. Original files are never rewritten.
+
+Codex `.jsonl.zst` archives are collected on Python 3.14+ using uncompressed offsets for stable message identities. Unchanged compressed files reuse their checkpoint; original and archived copies keep the same message IDs. Verified observations let matching event/response mirrors be deduplicated across archive copies without merging unrelated repeated requests.
+
+## Managed runtime and backup
+
+Copy `runtime-profile.example.json` to a private directory outside the repository and replace its example paths. It defines one collector and any local/read-only viewers. Existing Tailscale viewers can be added with their exact `tailscaleOrigin` and `tailscaleUser`; the supervisor does not change Tailscale permissions or exposure.
+
+```powershell
+python .\service_runtime.py start --config "$HOME\.codex-context-graph\profile.json"
+python .\service_runtime.py status --config "$HOME\.codex-context-graph\profile.json"
+python .\service_runtime.py restart --config "$HOME\.codex-context-graph\profile.json"
+python .\service_runtime.py stop --config "$HOME\.codex-context-graph\profile.json"
+# Optional Windows current-user login startup, with no visible console:
+python .\service_runtime.py enable-autostart --config "$HOME\.codex-context-graph\profile.json"
+python .\service_runtime.py disable-autostart --config "$HOME\.codex-context-graph\profile.json"
+```
+
+The supervisor restarts only its own children, uses bounded retry delays, refuses occupied ports and stops through an instance-specific control file. A collector heartbeat is stored separately from viewer refresh timestamps, so a viewer can report a stopped or unconfirmed collector. Login startup does not run before Windows sign-in. Collection and viewing never enable model/API analysis.
+
+Backups use SQLite's online backup API and include the display-settings sidecar. Include the current graph snapshot to retain merged projection IDs. Restore always writes a **new** database and refuses existing destination files; it verifies archive entry names, checksums and SQLite integrity. Original transcript directories, browser-local favorites, authentication files and runtime configuration are not included. Backups contain collected conversations and must stay private.
+
+```powershell
+python .\context_graph.py --db "$HOME\.codex-context-graph\knowledge.db" backup --output "$HOME\.codex-context-graph\backup.zip" --graph-snapshot "$HOME\.codex-context-graph\live\graph.html"
+python .\context_graph.py restore --file "$HOME\.codex-context-graph\backup.zip" --output "$HOME\.codex-context-graph\restored.db"
+# If a projection was included, use restored.graph.json as --graph-snapshot.
+```
+
+## Browser regression tests
+
+```powershell
+npm ci
+npx playwright install chromium
+npm run test:e2e
+```
+
+E2E tests launch a separate Chromium, synthetic SQLite database and local Python server. They never open the user's browser profile, production database or real transcripts; application requests outside the fixture origin are blocked. They check the four-column map, original reader and position restoration, search, bookmarks, management menus, responsive layout, chronological turns and display edits without iframe reload. GitHub Actions runs browser tests on Windows and Ubuntu with Python 3.14; failed traces/screenshots contain only synthetic data. Set `E2E_PYTHON` when a specific Python executable is needed locally.
 
 ## Automatic semantic analysis (opt-in)
 
@@ -100,6 +134,10 @@ The live **대화 탐색** screen offers separate **세션 목록** and **마인
 The built-in graph uses Korean classification, status, relationship, and evidence labels. JSON values such as `decision`, message IDs, node titles, summaries, and source quotes remain unchanged.
 
 Inside **대화 탐색**, **세션 목록**, **마인드맵** and **시간순 질문·답변** are the primary views. Expand **보조 보기** for **전체 분석 항목** and **관계 그림**; relationship viewing still requires a selected analysis item. The disclosure closes after choosing a view or pressing Escape, and its label identifies the active auxiliary view. This grouping does not change the underlying views, saved selection or data.
+
+The four-column map highlights the selected path while keeping other branches readable. Column and answer **⋯** menus retain name editing, restoration and auxiliary-topic controls. **이전 질문 / 다음 질문** walks the selected topic's stored order across pages; questions whose position is unconfirmed remain explicitly labelled. Selecting a confirmed question or answer opens a bottom source panel with its exact original message and surrounding dialogue. **앞선 대화 / 다음 대화** reads adjacent pages without replacing the selected map branch, and **전체 원문에서 열기** retains the full reader. Missing evidence never causes an adjacent answer or source position to be guessed.
+
+**원문 검색** searches all collected conversations through the existing local, read-only search endpoint. Results offer source reading and each verified question path separately; multiple matches are choices, not an automatic assignment. The search response's `analysisNodeIds` contains only source item IDs with rechecked evidence on that exact message. Unanalysed results remain readable without generating a graph. **즐겨찾기·최근 본** and **이어서 읽기** retain up to 200 favorite session IDs, 20 recent session IDs and 100 session/message reading positions in this browser's local storage. They do not store source text, titles or credentials, do not change display-name settings and are not synchronized across devices. Offline HTML keeps graph browsing and available local navigation settings; source reading and full-text search require the running viewer. No model or external analysis API is called by these controls.
 
 The analysis page initially opens **세션 목록**, or restores the last-used view. Choose a collected session to open its **마인드맵**, then a topic and a question to expand saved answers. List rows show the saved display name, project, recent activity, message count and first/latest request previews; the map uses compact session cards. Sessions sort by latest activity regardless of analysis status; unknown times come last and ties keep the catalogue order. Lists page eight entries at a time, and session search matches titles, projects, IDs and request previews. Selecting another session clears the previous topic/question branch; selecting the same session retains it. Question selection uses the complete source occurrence (session ID, original source-node ID and graph-node ID), preserving distinct occurrences of merged nodes. The original-conversation button opens the verified message and surrounding dialogue; returning restores the branch, page and list/map view. Unanalysed sessions remain available with a link to their raw dialogue. No model is called and no graph nodes or relations are generated by the viewer. Add `&mode=mind` to a `?view=graph` URL to enter session exploration directly.
 

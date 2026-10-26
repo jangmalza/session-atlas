@@ -71,6 +71,35 @@ CREATE TABLE IF NOT EXISTS topic_assignments (
   assignment_json TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS source_fingerprints (
+  path TEXT PRIMARY KEY,
+  size_bytes INTEGER NOT NULL,
+  mtime_ns INTEGER NOT NULL,
+  format TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS message_observations (
+  message_id TEXT NOT NULL REFERENCES messages(id) ON UPDATE CASCADE ON DELETE CASCADE,
+  source_path TEXT NOT NULL,
+  PRIMARY KEY(message_id,source_path)
+);
+CREATE TABLE IF NOT EXISTS session_providers (
+  session_id TEXT PRIMARY KEY REFERENCES sessions(id),
+  provider TEXT NOT NULL,
+  native_id TEXT NOT NULL,
+  session_kind TEXT NOT NULL,
+  parent_session_id TEXT,
+  title TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS native_message_ids (
+  message_id TEXT PRIMARY KEY REFERENCES messages(id) ON UPDATE CASCADE ON DELETE CASCADE,
+  native_id TEXT NOT NULL,
+  parent_native_id TEXT,
+  is_context INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS collector_state (
+  key TEXT PRIMARY KEY,
+  value_json TEXT NOT NULL
+);
 """
 
 
@@ -135,7 +164,7 @@ def message_from_line(row: dict) -> tuple[str, str, str] | None:
         # Never collect hidden analysis/reasoning or instructions.
         if role not in ("assistant", "user"):
             return None
-        if role == "assistant" and payload.get("phase") == "analysis":
+        if role == "assistant" and (payload.get("phase") == "analysis" or payload.get('channel')=='analysis'):
             return None
         content = extract_text(payload.get("content"))
         if content.strip():
@@ -153,28 +182,35 @@ def discover(home: Path) -> list[Path]:
     for directory in [home / "sessions", home / "archived_sessions"]:
         if directory.exists():
             files.extend(directory.rglob("rollout-*.jsonl"))
+            files.extend(directory.rglob("rollout-*.jsonl.zst"))
     return sorted(set(files))
 
 
 def fallback_session_id(path: Path) -> str:
     # A rollout filename normally ends in the thread UUID.
-    match = re.search(r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$", path.name, re.I)
+    match = re.search(r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl(?:\.zst)?$", path.name, re.I)
     return match.group(1) if match else digest(path.name)[:24]
 
 
 def scan_file(con: sqlite3.Connection, path: Path, mappings: dict[str, str] | None = None) -> dict:
     path = path.resolve()
     key = str(path)
-    stat_size = path.stat().st_size
+    stat = path.stat()
+    stat_size = stat.st_size
     existing = con.execute("SELECT offset_bytes, session_id FROM sources WHERE path=?", (key,)).fetchone()
     offset = int(existing["offset_bytes"]) if existing else 0
-    if stat_size < offset:  # A file was truncated; re-read. Old rows remain for audit.
+    packed = path.suffix == '.zst'
+    signature = con.execute('SELECT * FROM source_fingerprints WHERE path=?',(key,)).fetchone() if packed else None
+    if packed and signature and signature['size_bytes']==stat_size and signature['mtime_ns']==stat.st_mtime_ns and existing:
+        return {'path':key,'session_id':existing['session_id'],'added_messages':0,'offset':offset}
+    if packed or stat_size < offset:  # Packed sizes are not uncompressed byte offsets.
         offset = 0
     initial = existing["session_id"] if existing and existing["session_id"] else fallback_session_id(path)
     processed = 0
     last_offset = offset
     parsed = []
-    with path.open("rb") as f:
+    from session_metadata import open_rollout
+    with open_rollout(path) as f:
         f.seek(offset)
         while True:
             line_start = f.tell()
@@ -232,10 +268,14 @@ def scan_file(con: sqlite3.Connection, path: Path, mappings: dict[str, str] | No
                  VALUES (?,?,?,?,?,?,?,?)""",
                  (mid, sid, key, position, role, kind, content, str(event.get("timestamp") or "")))
             processed += result.rowcount
+            con.execute('INSERT OR IGNORE INTO message_observations VALUES (?,?)',(mid,key))
         con.execute("""INSERT INTO sources (path,offset_bytes,session_id,last_scan)
                      VALUES (?,?,?,?) ON CONFLICT(path) DO UPDATE SET
                      offset_bytes=excluded.offset_bytes,session_id=excluded.session_id,last_scan=excluded.last_scan""",
                     (key, last_offset, sid, when))
+        if packed:
+            con.execute('INSERT OR REPLACE INTO source_fingerprints VALUES (?,?,?,?)',
+                        (key,stat_size,stat.st_mtime_ns,'jsonl.zst'))
     return {"path": key, "session_id": sid, "added_messages": processed, "offset": last_offset}
 
 
@@ -281,16 +321,21 @@ def effective_messages(con: sqlite3.Connection, sid: str) -> list[dict]:
     by_source = {}
     for r in all_messages:
         by_source.setdefault(r["source_path"], []).append(r)
+    if con.execute("SELECT 1 FROM sqlite_master WHERE name='message_observations'").fetchone():
+        by_id={r['id']:r for r in all_messages}
+        for mid,path in con.execute('SELECT o.message_id,o.source_path FROM message_observations o JOIN messages m ON m.id=o.message_id WHERE m.session_id=?',(sid,)):
+            if mid in by_id and path!=by_id[mid]['source_path']:
+                by_source.setdefault(path,[]).append(by_id[mid])
     partners = {}
     for source_rows in by_source.values():
         source_rows.sort(key=lambda r: (r["offset_bytes"], r["id"]))
         for left, right in zip(source_rows, source_rows[1:]):
             if _same_turn_message_pair(left, right):
-                partners.setdefault(left["id"], []).append(right["id"])
-                partners.setdefault(right["id"], []).append(left["id"])
+                partners.setdefault(left["id"], set()).add(right["id"])
+                partners.setdefault(right["id"], set()).add(left["id"])
     mirrored_events = {r["id"] for r in all_messages if r["source_kind"] == "event_msg"
                        and len(partners.get(r["id"], [])) == 1
-                       and len(partners[partners[r["id"]][0]]) == 1}
+                       and len(partners[next(iter(partners[r["id"]]))]) == 1}
     # Archived and live copies can each contain the same transcript events.
     seen = set()
     final = []
@@ -522,8 +567,9 @@ def render_html(graph: dict, filename: Path, qa_context: dict | None = None) -> 
     labels = json.dumps({"classification": CLASSIFICATION_KO, "status": STATUS_KO,
                          "relation": RELATION_KO}, ensure_ascii=False)
     template = Path(__file__).with_name("graph_view.html").read_text(encoding="utf-8")
-    style = "\n".join(Path(__file__).with_name(name).read_text(encoding="utf-8") for name in ("graph_view.css", "ui_theme.css", "graph_design.css"))
-    script = Path(__file__).with_name("ui_theme.js").read_text(encoding="utf-8") + "\n" + Path(__file__).with_name("graph_view.js").read_text(encoding="utf-8").replace("__KO_LABELS__", labels)
+    style = "\n".join(Path(__file__).with_name(name).read_text(encoding="utf-8") for name in ("graph_view.css", "ui_theme.css", "graph_design.css", "explorer_tools.css"))
+    script = "\n".join(Path(__file__).with_name(name).read_text(encoding="utf-8") for name in
+                       ("ui_theme.js", "explorer_tools.js", "raw_turns.js", "graph_view.js")).replace("__KO_LABELS__", labels)
     context = json.dumps(qa_context or {}, ensure_ascii=False).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
     # A literal empty metadata script also works with older running collectors.
     template = template.replace('<script type="application/json" id="qa-context">{}</script>',
@@ -978,7 +1024,8 @@ def collection_snapshot(con: sqlite3.Connection) -> dict:
             pending_messages += max(0, count - baseline)
         else:
             pending_messages += count
-    return {"sessionCount": len(sessions), "messageCount": messages,
+    from runtime_status import collector_status
+    return {"sessionCount": len(sessions), "messageCount": messages,"collector":collector_status(con),
             "analysedSessionCount": len(maps), "pendingSessionCount": pending_sessions,
             "pendingMessageCount": pending_messages, "changedAnalysedSessionCount": changed_sessions,
             "lastCheckedUtc": now(), "autoAnalysis": False}
@@ -1008,11 +1055,17 @@ def publish_dashboard(con: sqlite3.Connection, dashboard, scan_errors: int = 0, 
     dashboard.publish(graph, status, revision, render_html)
 
 
-def watch_tick(con: sqlite3.Connection, home: Path, mappings=None, dashboard=None) -> dict:
+def watch_tick(con: sqlite3.Connection, home: Path, mappings=None, dashboard=None, *, claude_home=None, interval=10) -> dict:
     """Collect and publish only. This path deliberately has no analyzer call."""
     failures = []
     results = scan(con, home, mappings, on_error=failures.append)
+    if claude_home is not None:
+        from source_adapters import scan_claude
+        results.extend(scan_claude(con,claude_home,mappings,on_error=failures.append))
     added = sum(r["added_messages"] for r in results)
+    with con:
+        con.execute('INSERT OR REPLACE INTO collector_state VALUES (?,?)',('heartbeat',json.dumps(
+            {'at':now(),'pid':os.getpid(),'interval':interval,'scanErrors':len(failures),'addedMessages':added})))
     if dashboard is not None:
         publish_dashboard(con, dashboard, len(failures))
     return {"added_messages": added, "scan_errors": len(failures)}
@@ -1022,10 +1075,17 @@ def options() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Codex Context Graph: local session collector and semantic knowledge map")
     p.add_argument("--db", type=Path, default=Path.home() / ".codex-context-graph" / "knowledge.db")
     p.add_argument("--codex-home", type=Path, default=codex_home())
+    p.add_argument("--claude-home", type=Path, help="also collect local Claude Code projects; no model or API calls")
     p.add_argument("--project-map", type=Path, help='JSON mapping of CWD prefixes to unified project names')
     sub = p.add_subparsers(dest="command", required=True)
     sub.add_parser("scan", help="collect new messages from Codex rollout JSONL files")
     sub.add_parser("status", help="show stored counts")
+    backup = sub.add_parser('backup',help='create a local verified database/settings backup')
+    backup.add_argument('--output',type=Path,required=True)
+    backup.add_argument('--graph-snapshot',type=Path,help='preserve existing merged graph identities in the backup')
+    restore = sub.add_parser('restore',help='restore a backup to a NEW database path; never overwrite')
+    restore.add_argument('--file',type=Path,required=True)
+    restore.add_argument('--output',type=Path,required=True)
     exp = sub.add_parser("export-transcript", help="export a session in Conversation Map JSON format")
     exp.add_argument("--session", required=True); exp.add_argument("--output", type=Path, required=True)
     imp = sub.add_parser("import-map", help="import a validated Conversation Map map.json")
@@ -1068,6 +1128,14 @@ def options() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = options().parse_args(argv)
+    if args.command in ('backup','restore'):
+        from backup_store import backup,restore
+        import zipfile
+        try:
+            result=backup(args.db,args.output,args.graph_snapshot) if args.command=='backup' else restore(args.file,args.output)
+            print(json.dumps(result));return 0
+        except (OSError,ValueError,sqlite3.Error,zipfile.BadZipFile,RuntimeError) as error:
+            print('Backup operation failed ('+type(error).__name__+'); original data was not overwritten',file=sys.stderr);return 1
     if args.command == "analyze":
         if not args.allow_model:
             print("error: model processing requires explicit --allow-model", file=sys.stderr)
@@ -1120,6 +1188,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "scan":
             r = scan(con, args.codex_home, mappings)
+            if args.claude_home is not None:
+                from source_adapters import scan_claude
+                r.extend(scan_claude(con,args.claude_home,mappings))
             print(f"scanned {len(r)} files; added {sum(x['added_messages'] for x in r)} messages")
         elif args.command == "status":
             cmd_status(con)
@@ -1186,7 +1257,7 @@ def main(argv: list[str] | None = None) -> int:
                 while True:
                     try:
                         if args.command == "watch":
-                            result = watch_tick(con, args.codex_home, mappings, dashboard)
+                            result = watch_tick(con, args.codex_home, mappings, dashboard, claude_home=args.claude_home, interval=args.interval)
                             if result["added_messages"] or result["scan_errors"]:
                                 print(now(), "collected", result["added_messages"], "messages; scan errors", result["scan_errors"], flush=True)
                         else:

@@ -31,4 +31,32 @@ jobs:
         with:
           node-version: '22'
       - name: Verify question ordering, answer links and viewer lifecycle
-        run: node --test tests/qa_timeline.test.cjs tests/session_mindmap.test.cjs tests/mindmap_lifecycle.test.cjs
+        run: node --test tests/qa_timeline.test.cjs tests/session_mindmap.test.cjs tests/mindmap_lifecycle.test.cjs tests/explorer_tools.test.cjs
+
+  e2e:
+    name: Browser E2E (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: e2e-${{ matrix.os }}
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7

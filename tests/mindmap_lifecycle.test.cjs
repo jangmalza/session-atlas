@@ -6,7 +6,7 @@ const vm = require('node:vm');
 
 // Execute the entire production browser script. This small DOM implements only
 // browser primitives; it deliberately contains no catalog or selection logic.
-const source = fs.readFileSync(path.join(__dirname, '../graph_view.js'), 'utf8');
+const source = ['explorer_tools.js','raw_turns.js','graph_view.js'].map(name=>fs.readFileSync(path.join(__dirname,'..',name),'utf8')).join('\n');
 const html = fs.readFileSync(path.join(__dirname, '../graph_view.html'), 'utf8');
 const stateKey = 'context-graph-mind-selection';
 const clone = value => JSON.parse(JSON.stringify(value));
@@ -115,7 +115,7 @@ function fixture() {
 
 async function settle() { for (let index = 0; index < 20; index++) await Promise.resolve(); }
 
-function browser({data = fixture(), storage = new Map(), seed = {[data.sessionId]: data.context}, protocol = 'http:', catalog, messages, displayEdit, sessionEdit, itemEdit} = {}) {
+function browser({data = fixture(), storage = new Map(), seed = {[data.sessionId]: data.context}, protocol = 'http:', catalog, messages, displayEdit, sessionEdit, itemEdit, searchResults} = {}) {
   const elements = new Map();
   const document = new Element('document'); document.document = document;
   document.body = new Element('body', document); document.append(document.body);
@@ -136,8 +136,7 @@ function browser({data = fixture(), storage = new Map(), seed = {[data.sessionId
   }
   elements.get('graph-data').textContent = JSON.stringify(data.graph);
   elements.get('qa-context').textContent = JSON.stringify(seed);
-  const titleDialog=elements.get('item-title-dialog');titleDialog.open=false;
-  titleDialog.showModal=()=>{titleDialog.open=true;};titleDialog.close=()=>{titleDialog.open=false;};
+  for(const id of ['item-title-dialog','explorer-search-dialog','explorer-library']){const dialog=elements.get(id);dialog.open=false;dialog.showModal=()=>{dialog.open=true;};dialog.close=()=>{dialog.open=false;};}
   for (const id of ['project', 'category']) elements.get(id).append(new Element('option', document));
   const sessionStorage = {getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, String(value)), removeItem: key => storage.delete(key)};
   let now = 0, timerId = 0, frameId = 0;
@@ -153,6 +152,7 @@ function browser({data = fixture(), storage = new Map(), seed = {[data.sessionId
   const response = value => ({ok: true, json: async () => clone(value)});
   const fetch = async (url, options = {}) => {
     requests.push(String(url));
+    if(String(url)==='timeline/search.json') {assert.equal(options.method,'POST');assert.ok(searchResults,'only explicit search tests may search');return response(await searchResults(JSON.parse(options.body)));}
     if(String(url)==='item-display.json') {
       assert.equal(options.method,'POST');assert.equal(options.headers['X-Context-Graph-Action'],'item-display');
       assert.equal(options.headers['Content-Type'],'application/json');assert.ok(itemEdit,'only explicit item tests may save titles');
@@ -169,7 +169,8 @@ function browser({data = fixture(), storage = new Map(), seed = {[data.sessionId
       assert.ok(displayEdit,'only explicit edit tests may write local preferences');
       const value=JSON.parse(options.body);displayRequests.push(value);return displayEdit(value,options);
     }
-    assert.match(String(url), /^timeline\/(sessions|messages)\.json(?:\?|$)/, 'UI must only call local read-only timeline routes');
+    assert.match(String(url), /^timeline\/(sessions|messages|context|turns)\.json(?:\?|$)/, 'UI must only call local read-only timeline routes');
+    if(String(url).startsWith('timeline/turns.json'))return response({session:{id:new URL(url,'http://local/').searchParams.get('session')},kind:'chronological',turns:[],revision:'revision-1'});
     if (String(url) === 'timeline/sessions.json') return response(await catalogHandler(options));
     return response(messages ? await messages(url, options) : {...data.context, total: data.context.messages.length, offset: 0, revision: 'revision-1'});
   };
@@ -211,6 +212,55 @@ test('full startup keeps restored page four while a partial catalog is replaced 
   assert.equal(app.selected('questions')?.dataset.key, data.selection.question);
   assert.deepEqual(app.state(), data.selection);
   assert.match(app.elements.get('mind-sessions').textContent, /33–40 \/ 48/);
+});
+
+function panelResponse(data,url) {
+  const query=new URL(url,'http://local/').searchParams,limit=Number(query.get('limit')||200);
+  const target=data.context.messages.findIndex(m=>m.id===query.get('message'));
+  const offset=query.has('offset')?Number(query.get('offset')):Math.max(0,Math.min(target-3,data.context.messages.length-limit));
+  return {...data.context,offset,total:data.context.messages.length,revision:'stable',messages:data.context.messages.slice(offset,offset+limit).map(m=>({...m,content:'LITERAL <img src=x> '+m.id}))};
+}
+test('question stepping crosses pages, opens exact raw context and preserves data and display names',async()=>{
+  const data=fixture(),before=clone(data),storage=new Map([[stateKey,JSON.stringify(data.selection)]]);
+  const app=browser({data,storage,messages:url=>panelResponse(data,url)});await settle();
+  app.elements.get('question-next').click();await settle();
+  assert.equal(app.selected('questions').dataset.nodeId,'q13');assert.equal(app.state().pages[2],1);
+  assert.equal(app.elements.get('source-reader').hidden,false);
+  const raw=app.elements.get('source-reader-body').querySelector('.reader-target');
+  assert.equal(raw.dataset.messageId,'m13');assert.match(raw.textContent,/LITERAL <img src=x> m13/);assert.equal(raw.querySelector('img'),null);
+  app.elements.get('question-previous').click();await settle();assert.equal(app.selected('questions').dataset.nodeId,'q12');
+  assert.equal(JSON.stringify(data),JSON.stringify(before));
+  app.elements.get('source-reader-full').click();assert.equal(app.navigation.at(-1).message,'m12');
+});
+test('a delayed raw response cannot reopen the panel after changing sessions',async()=>{
+  const data=fixture(),pending=deferred(),app=browser({data,storage:new Map([[stateKey,JSON.stringify(data.selection)]]),
+    messages:url=>new URL(url,'http://local/').searchParams.get('limit')==='7'?pending.promise:panelResponse(data,url)});await settle();
+  app.elements.get('question-next').click();
+  app.cards('sessions').find(c=>c.dataset.key==='session-37').click();
+  pending.resolve(panelResponse(data,'http://local/?limit=7&message=m13'));await settle();
+  assert.equal(app.elements.get('source-reader').hidden,true);assert.equal(app.state().session,'session-37');
+});
+test('favorites and last-read message survive reload without source writes',async()=>{
+  const data=fixture(),storage=new Map([[stateKey,JSON.stringify(data.selection)]]);
+  const options={data,storage,messages:url=>panelResponse(data,url)},app=browser(options);await settle();
+  app.elements.get('explorer-star').click();app.elements.get('question-next').click();await settle();
+  const saved=JSON.parse(storage.get('session-atlas-navigation-v1'));
+  assert.deepEqual(saved.favorites,[data.sessionId]);assert.equal(saved.positions[0].message,'m13');assert.ok(!JSON.stringify(saved).includes('LITERAL'));
+  const restored=browser(options);await settle();assert.equal(restored.elements.get('explorer-star').getAttribute('aria-pressed'),'true');
+  restored.elements.get('explorer-resume').click();await settle();
+  assert.equal(restored.elements.get('source-reader-body').querySelector('.reader-target').dataset.messageId,'m13');
+  assert.equal(restored.displayRequests.length+restored.sessionRequests.length+restored.itemRequests.length,0);
+});
+test('full-text search shows an explicit source path and opens its exact question occurrence',async()=>{
+  const data=fixture(),before=clone(data),app=browser({data,messages:url=>panelResponse(data,url),
+    searchResults:()=>({results:[{id:'m12',sessionId:data.sessionId,index:12,role:'user',snippet:'LITERAL <script> query',analysisNodeIds:['source-q12']}],total:1,offset:0,limit:20})});await settle();
+  app.elements.get('explorer-search').click();app.elements.get('explorer-search-query').value='query';
+  app.elements.get('explorer-search-form').dispatchEvent({type:'submit',preventDefault(){}});await settle();
+  const results=app.elements.get('explorer-search-results');assert.equal(results.querySelector('script'),null);
+  const target=results.querySelectorAll('button').find(b=>b.textContent.startsWith('마인드맵 · '));assert.ok(target);target.click();await settle();
+  assert.equal(app.state().session,data.sessionId);assert.equal(app.state().topic,'topic:topic-12');
+  assert.equal(app.selected('questions').dataset.sourceNode,'source-q12');assert.equal(app.state().pages[2],1);
+  assert.equal(app.elements.get('source-reader-body').querySelector('.reader-target').dataset.messageId,'m12');assert.deepEqual(data,before);
 });
 
 test('wide session list and four-column mind map switch without losing the selected branch or pages',async()=>{
@@ -349,7 +399,7 @@ test('polling adds a collected session without replacing selected topic and ques
   assert.match(app.elements.get('info').textContent, /49/);
   for (let page = 4; page < 6; page++) app.pager('sessions', 'next').click();
   assert.ok(app.cards('sessions').some(card => card.dataset.key === 'newly-collected'));
-  assert.equal(app.requests.filter(url => url.startsWith('timeline/messages.json')).length, 1, 'catalog polling must not reload original messages');
+  assert.equal(app.requests.filter(url => url.startsWith('timeline/context.json')).length, 1, 'catalog polling must not reload original context');
 });
 
 test('unchanged polls keep visible cards, focus and selection untouched', async () => {
@@ -514,7 +564,7 @@ test('session cards show a first-request title as text with activity and keep ID
   assert.equal(card.querySelector('.name').textContent, data.sessions[0].title);
   assert.equal(card.querySelector('img'), null, 'title content must never become HTML');
   assert.equal(card.querySelector('.session-title-source').textContent, '첫 요청');
-  assert.equal(card.querySelector('.session-project').textContent, 'test');
+  assert.equal(card.querySelector('.session-project').textContent.endsWith('test'), true);
   assert.match(card.querySelector('.mind-meta').textContent, /분석 있음 · 메시지 32개/);
   assert.match(card.querySelector('.mind-activity').textContent, /^최근 /);
   assert.ok(card.title.includes(data.sessions[0].id), 'exact ID remains available in the tooltip');
@@ -631,6 +681,7 @@ function timelineBrowser({sessions,messageSessions=sessions,hash='',storage=new 
   for(const match of script.matchAll(/byId\("([^"]+)"\)/g))document.getElementById(match[1]);
   document.getElementById('timeline-labels').textContent=JSON.stringify({classification:{},status:{},relation:{}});
   const requests=[],timers=[],location={protocol:'https:',hash};
+  const window=new Element('window',document);window.parent=window;
   const saved={getItem:key=>storage.get(key)||null,setItem:(key,value)=>storage.set(key,String(value))};
   const dialog=document.getElementById('search-dialog');dialog.showModal=()=>{dialog.open=true;};dialog.close=()=>{dialog.open=false;};
   const fetch=async(url,options={})=>{
@@ -646,7 +697,7 @@ function timelineBrowser({sessions,messageSessions=sessions,hash='',storage=new 
     return {ok:true,json:async()=>clone(value)};
   };
   function Option(text,value) {const node=document.createElement('option');node.textContent=text;node.value=value;return node;}
-  vm.runInNewContext(script,{document,location,fetch,sessionStorage:saved,localStorage:saved,URLSearchParams,Option,innerWidth:1400,
+  vm.runInNewContext(script,{window,document,location,fetch,sessionStorage:saved,localStorage:saved,URLSearchParams,Option,innerWidth:1400,
     history:{replaceState(){}},setTimeout:handler=>{timers.push(handler);},console},{filename:'session_timeline.js'});
   return {elements,requests,storage,cards:()=>document.getElementById('session-list').querySelectorAll('.session'),
     setCatalog:next=>{sessions=next;},async poll(){timers.shift()();await settle();}};
@@ -938,7 +989,7 @@ test('an unanalysed session can be named without an analysis context or source g
   app.elements.get('mind-session-name').value='분석 전 세션';app.elements.get('mind-session-name').dispatchEvent({type:'input'});
   app.elements.get('mind-session-name-save').click();await settle();
   assert.equal(app.selected('sessions').querySelector('.name').textContent,'분석 전 세션');
-  assert.equal(app.cards('topics').length,0);
+  assert.equal(app.cards('topics')[0].dataset.kind,'raw-topic');
   assert.equal(app.state().session,'session-0');assert.deepEqual(data,before);
 });
 
@@ -1055,7 +1106,9 @@ test('linked answers and quote-evidence titles stay distinct and keep their orig
   assert.match(evidence.querySelector('.mind-meta').textContent,/원문 #39/);
   assert.equal(evidence.querySelector('.answer-evidence-preview').textContent,data.context.analysis.assistantEvidence['source-q12'][0].quotes[0]);
   assert.equal(evidence.dataset.nodeId,undefined);assert.equal(evidence.dataset.messageId,'raw-answer-39');
-  evidence.click();await settle();assert.equal(app.navigation[0].message,'raw-answer-39');
+  evidence.click();await settle();assert.equal(app.elements.get('source-reader').hidden,false);
+  assert.equal(app.elements.get('source-reader-body').querySelector('.reader-target').dataset.messageId,'raw-answer-39');
+  app.elements.get('source-reader-full').click();assert.equal(app.navigation[0].message,'raw-answer-39');
   assert.equal(app.itemRequests[0].item,'source-answer');assert.equal(app.itemRequests[1].item,'source-q12');
   assert.equal(app.itemRequests[1].evidenceMessage,'raw-answer-39');assert.deepEqual(data,before);
 });
@@ -1115,6 +1168,8 @@ test('mind map shows stored answer evidence without an answers edge and opens ex
   assert.equal(cards[0].querySelector('.answer-evidence-preview').textContent,data.context.analysis.assistantEvidence['source-q12'][0].quotes[0]);
   assert.equal(cards[0].querySelector('img'),null);
   cards[0].click();await settle();
+  assert.equal(app.elements.get('source-reader-body').querySelector('.reader-target').dataset.messageId,'raw-answer-39');
+  app.elements.get('source-reader-full').click();
   assert.deepEqual(app.navigation,[{type:'context-graph-open-source',session:data.sessionId,message:'raw-answer-39'}]);
   assert.deepEqual(app.state(),data.selection);
   assert.deepEqual(data,before,'virtual evidence cards must not add graph nodes/edges or alter evidence');

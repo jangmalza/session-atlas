@@ -13,3 +13,9 @@ local-data/
 # Generated sensitive model-analysis drafts (never commit)
 analysis-cache/
 decisions-cache/
+node_modules/
+test-results/
+playwright-report/
+.e2e-data/
+*.jsonl.zst
+*.zip

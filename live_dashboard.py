@@ -69,7 +69,7 @@ def load_graph(path: Path) -> dict:
     text = path.read_text(encoding="utf-8")
     value = json.loads(text) if path.suffix.lower() == ".json" else embedded_json(text, "graph-data")
     if not isinstance(value, dict) or value.get("schemaVersion") != "mvp-1":
-        raise ValueError("Expected a Codex Context Graph snapshot")
+        raise ValueError("Expected a Session Atlas snapshot")
     nodes, edges = value.get("nodes"), value.get("edges")
     if not isinstance(nodes, list) or not isinstance(edges, list):
         raise ValueError("Invalid graph snapshot arrays")
@@ -125,8 +125,8 @@ def _index_html(status: dict) -> bytes:
     payload = json.dumps(status, ensure_ascii=False).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
     return f'''<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="{policy}"><meta name="referrer" content="no-referrer">
-<title>Codex Context Graph · 자동 수집</title><style>{style}</style></head><body>
-<header><div class="heading"><div class="brand"><svg viewBox="0 0 54 24" width="45" height="24" aria-hidden="true"><path d="M6 12H48" fill="none" stroke="currentColor"/><path d="M3 9h6v6H3zM18 9h6v6h-6zM33 9h6v6h-6zM45 9h6v6h-6z" fill="currentColor"/></svg><h1>CONTEXT GRAPH</h1><span class="brand-caption">대화 기록실</span></div><span id="collector-state" role="status">수집 준비 중</span><span class="model-policy">모델 자동 분석 꺼짐</span><label class="ui-theme">화면<select data-ui-theme aria-label="화면 테마"><option value="paper">종이 화면</option><option value="dark">어두운 화면</option><option value="system">시스템 설정</option></select></label><details class="collection-stats"><summary>수집 현황</summary><div class="metrics"><div><strong data-testid="session-count">0</strong><span>수집한 세션</span></div>
+<title>Session Atlas · 자동 수집</title><style>{style}</style></head><body>
+<header><div class="heading"><div class="brand"><svg viewBox="0 0 54 24" width="45" height="24" aria-hidden="true"><path d="M6 12H48" fill="none" stroke="currentColor"/><path d="M3 9h6v6H3zM18 9h6v6h-6zM33 9h6v6h-6zM45 9h6v6h-6z" fill="currentColor"/></svg><h1>SESSION ATLAS</h1><span class="brand-caption">대화 기록실</span></div><span id="collector-state" role="status">수집 준비 중</span><span class="model-policy">모델 자동 분석 꺼짐</span><label class="ui-theme">화면<select data-ui-theme aria-label="화면 테마"><option value="paper">종이 화면</option><option value="dark">어두운 화면</option><option value="system">시스템 설정</option></select></label><details class="collection-stats"><summary>수집 현황</summary><div class="metrics"><div><strong data-testid="session-count">0</strong><span>수집한 세션</span></div>
 <div><strong data-testid="message-count">0</strong><span>수집한 메시지</span></div>
 <div><strong data-testid="analysed-count">0</strong><span>분석된 세션</span></div>
 <div><strong data-testid="pending-count">0</strong><span>분석 대기 세션</span></div>
@@ -172,6 +172,8 @@ class LiveDashboard:
         timeline_bytes = timeline_html()
         atomic_write(self.directory / "timeline.html", timeline_bytes)
         self._timeline_revision = fingerprint(timeline_bytes)
+        assets=('graph_view.html','graph_view.js','graph_view.css','graph_design.css','explorer_tools.js','explorer_tools.css','raw_turns.js','ui_theme.js','ui_theme.css','live_view.js','live_view.css')
+        self._ui_revision=fingerprint(b''.join(Path(__file__).with_name(name).read_bytes() for name in assets)+timeline_bytes)
         self._status = {"state": "starting", "autoAnalysis": False, "graphReady": False, "mapReady": False,
                         "timelineReady": True, "timelineRevision": self._timeline_revision, "analysisRevision": "",
                         "graphRevision": "", "mapRevision": "", "lastCheckedUtc": "", "scanErrors": 0,
@@ -198,7 +200,7 @@ class LiveDashboard:
         state = self.status()
         # Topic assignments change the derived view, not graph-data. Collection
         # counts and new message revisions deliberately do not trigger a render.
-        graph_revision = fingerprint(json.dumps([graph, self.timeline.topic_assignment_revision()],
+        graph_revision = fingerprint(json.dumps([graph, self.timeline.topic_assignment_revision(),self._ui_revision],
                                                 ensure_ascii=False, sort_keys=True).encode())
         # Validate and prepare snapshots before replacing a displayed result.
         map_bytes = self.map_snapshot.read_bytes() if self.map_snapshot else None
@@ -228,6 +230,8 @@ class LiveDashboard:
         status = {k: collection.get(k, 0) for k in ("sessionCount", "messageCount", "analysedSessionCount",
                   "pendingSessionCount", "pendingMessageCount", "changedAnalysedSessionCount", "scanErrors")}
         status.update({"state": "warning" if status["scanErrors"] else "watching", "autoAnalysis": False,
+                       "collector":collection.get('collector',{'state':'unknown'}),
+                       "uiRevision":self._ui_revision,
                        "readOnlyViewer": bool(collection.get("readOnlyViewer")),
                        "timelineReady": True, "timelineRevision": self._timeline_revision, "analysisRevision": analysis_revision,
                        "lastCheckedUtc": collection["lastCheckedUtc"], "graphReady": True,
@@ -285,13 +289,21 @@ class LiveDashboard:
                 if path == "/status.json":
                     payload = json.dumps(dashboard.status(), ensure_ascii=False).encode("utf-8")
                     content_type = "application/json; charset=utf-8"
-                elif path in ("/timeline/sessions.json", "/timeline/messages.json"):
+                elif path in ("/timeline/sessions.json", "/timeline/messages.json", "/timeline/context.json", "/timeline/turns.json"):
                     try:
                         query = parse_qs(parsed.query, keep_blank_values=True, max_num_fields=5)
                         if path == "/timeline/sessions.json":
                             if query:
                                 raise ValueError("Unexpected timeline query")
                             result = dashboard.timeline.read()
+                        elif path in ("/timeline/context.json","/timeline/turns.json"):
+                            if set(query)!={'session'} or len(query['session'])!=1 or not 1<=len(query['session'][0])<=128:raise ValueError('Invalid context query')
+                            session=query['session'][0]
+                            if path=='/timeline/turns.json':result=dashboard.timeline.turns(session)
+                            else:
+                                contexts=dashboard.timeline.question_context({session},live=True)
+                                if session not in contexts:raise KeyError(session)
+                                result=contexts[session]
                         else:
                             if set(query) - {"session", "offset", "limit", "message"} or any(len(values) != 1 for values in query.values()):
                                 raise ValueError("Invalid timeline query")
@@ -333,7 +345,7 @@ class LiveDashboard:
                 self.end_headers()
                 try:
                     self.wfile.write(payload)
-                except (BrokenPipeError, ConnectionResetError):
+                except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
                     pass
 
             def do_POST(self):
@@ -372,7 +384,7 @@ class LiveDashboard:
                 self.end_headers()
                 try:
                     self.wfile.write(payload)
-                except (BrokenPipeError,ConnectionResetError):
+                except (BrokenPipeError,ConnectionResetError,ConnectionAbortedError):
                     pass
 
             def _edit_display_preferences(self, path: str):
@@ -436,7 +448,7 @@ class LiveDashboard:
                 self.end_headers()
                 try:
                     self.wfile.write(payload)
-                except (BrokenPipeError, ConnectionResetError):
+                except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
                     pass
 
         self._server = ThreadingHTTPServer(("127.0.0.1", self.port), Handler)

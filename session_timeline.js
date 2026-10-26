@@ -14,6 +14,19 @@
   let selectedNode = "", unplacedMode = false, requestSerial = 0, statusKey = "";
   let jumpMessage = new URLSearchParams(location.hash.slice(1)).get("message") || "";
   let view = "conversation", category = "all";
+  const readingKey="session-atlas-reader-state-v1";
+  function savedReading(sid){try{const raw=localStorage.getItem(readingKey);if(raw?.length>100000)return null;const rows=JSON.parse(raw||"[]");return Array.isArray(rows)?rows.find(r=>r.session===sid && Number.isInteger(r.offset) && r.offset>=0):null;}catch(_){return null;}}
+  let restoreReading=!jumpMessage?savedReading(selected):null;
+  follow.checked=restoreReading?Boolean(restoreReading.follow):!jumpMessage;
+  function persistReading(){
+    if(!data || data.session.id!==selected)return;
+    const viewport=messages.getBoundingClientRect(),rows=[...messages.querySelectorAll('.message')];
+    const visible=rows.find(e=>e.getBoundingClientRect().bottom>viewport.top+2) || rows[0];
+    const entry={session:selected,offset:data.offset,follow:follow.checked,message:visible?.dataset.messageId||"",
+      within:visible?Math.max(0,viewport.top-visible.getBoundingClientRect().top):0,
+      opened:[...messages.querySelectorAll('.raw-message[open]')].map(e=>e.dataset.stateKey.split(':')[0]).slice(0,100)};
+    try{const old=JSON.parse(localStorage.getItem(readingKey)||"[]");localStorage.setItem(readingKey,JSON.stringify([entry,...(Array.isArray(old)?old:[]).filter(r=>r.session!==selected)].slice(0,100)));}catch(_){}
+  }
   let searchPage = null, searchArguments = null, searchSerial = 0, highlightTerm = "", locatedMessageId = "";
   const searchDialog = byId("search-dialog");
   let sessionKindFilter="primary", sessionParentFilter="";
@@ -203,6 +216,7 @@
     if (selected) hash.set("session", selected);
     if (message) hash.set("message", message);
     history.replaceState(null, "", "#" + hash.toString());
+    if(window.parent!==window)window.parent.postMessage({type:'context-graph-reader-position',session:selected},location.origin);
   }
   function filtered() {
     const term = byId("session-search").value.trim().toLocaleLowerCase();
@@ -229,7 +243,7 @@
       if (session.displayTitle) heading.append(el("span", "표시 이름", "session-title-source"));
       else if (session.titleSource === "first_user") heading.append(el("span", "첫 요청", "session-title-source"));
       else if (session.titleSource === "own_request") heading.append(el("span", "분기 후 요청", "session-title-source"));
-      button.append(heading, el("span", `${session.project}${session.branch ? " · " + session.branch : ""}`, "muted"),
+      button.append(heading, el("span", `${session.provider==='claude'?'Claude Code':'Codex'} · ${session.project}${session.branch ? " · " + session.branch : ""}`, "muted"),
         el("span", `메시지 ${number.format(session.messageCount)}개 · ${session.hasAnalysis ? "분석 " + number.format(session.analysisItemCount) + "개" : "분석 대기"}`, "muted"),
         el("time", time(session.lastMessageAt), "muted"));
       const helpers=sessions.filter(item=>sessionKind(item)==="subagent" && parentKey(item)===session.id).length;
@@ -384,6 +398,7 @@
     const session = selected;
     const serial = ++requestSerial;
     const query = new URLSearchParams({session, limit: "100"});
+    if(offset===null && restoreReading && !restoreReading.follow)offset=restoreReading.offset;
     if (offset !== null) query.set("offset", String(offset));
     else if (jumpMessage) query.set("message", jumpMessage);
     const result = await get("timeline/messages.json?" + query);
@@ -408,18 +423,27 @@
     byId("unplaced").hidden = !data.analysis.unplacedIds.length;
     byId("unplaced").textContent = `시점 미확정 분석 ${data.analysis.unplacedIds.length}개`;
     if (changed || jumpMessage) renderMessages(scrollToEnd);
+    if(restoreReading){
+      const saved=restoreReading;restoreReading=null;
+      for(const raw of messages.querySelectorAll('.raw-message'))if(saved.opened?.includes(raw.dataset.stateKey.split(':')[0]))raw.open=true;
+      const target=[...messages.querySelectorAll('.message')].find(e=>e.dataset.messageId===saved.message);
+      if(target && !saved.follow)messages.scrollTop+=target.getBoundingClientRect().top-messages.getBoundingClientRect().top+Math.min(Math.max(0,Number(saved.within)||0),Math.max(0,target.offsetHeight-20));
+    }
+    remember();persistReading();
     if (changed && view === "analysis") renderOverview();
     if (selectedNode) showAnalysis(selectedNode);
     else if (unplacedMode) showUnplaced();
     state("자동 갱신 중 · 모델 자동 분석 꺼짐");
   }
   async function choose(sid, targetMessage = "") {
+    persistReading();
     ++requestSerial;
     selected = sid;
     revealSession(sid);
     data = null;
     jumpMessage = targetMessage;
     locatedMessageId = targetMessage;
+    restoreReading=!targetMessage?savedReading(sid):null;
     selectedNode = "";
     unplacedMode = false;
     closeDetail();
@@ -427,7 +451,7 @@
     overview.replaceChildren(el("p", "대화를 선택해 정리된 내용을 확인하세요.", "empty"));
     byId("analysis-filters").replaceChildren();
     updateViewSummary();
-    follow.checked = !targetMessage;
+    follow.checked = restoreReading?Boolean(restoreReading.follow):!targetMessage;
     if (targetMessage) switchView("conversation");
     remember(targetMessage);
     renderSessions();
@@ -504,6 +528,10 @@
     readingSize(byId("reading-size").value);
     try { localStorage.setItem("context-graph-reading-size", byId("reading-size").value); } catch (_) {}
   });
+  let readingTimer=0;
+  messages.addEventListener('scroll',()=>{clearTimeout(readingTimer);readingTimer=setTimeout(persistReading,120);});
+  messages.addEventListener('toggle',persistReading,true);
+  window.addEventListener('pagehide',persistReading);
 
   async function poll(initial = false) {
     try {
@@ -521,6 +549,7 @@
         statusKey = key;
       }
       if (status.state === "error" || status.state === "warning") state("수집 상태 확인 필요 · 마지막 표시 유지", true);
+      else if(status.collector?.state==='stopped')state('수집기 응답 없음 · 저장된 기록을 표시합니다',true);
       else state("자동 갱신 중 · 모델 자동 분석 꺼짐");
     } catch (_) { showError(); }
     finally { setTimeout(poll, 2000); }

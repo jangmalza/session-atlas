@@ -281,6 +281,7 @@ if(typeof document !== "undefined") (() => {
   const sessionNameDrafts=new Map();
   const sessionTitle=QuestionAnswers.sessionTitle;
   const sessionSearchText=session=>[sessionTitle(session),session.title,session.project,session.id,
+    session.provider==='claude'?'Claude Code':'Codex',
     session.requestPreviews?.first?.text,session.requestPreviews?.latest?.text].filter(Boolean).join(" ").toLocaleLowerCase();
   const activityValue=session=>{const value=Date.parse(session.lastMessageAt || "");return Number.isFinite(value)?value:-Infinity;};
   const recentSessions=(a,b)=>{const left=activityValue(a),right=activityValue(b);return left===right?0:left<right?1:-1;};
@@ -289,6 +290,7 @@ if(typeof document !== "undefined") (() => {
   try {const scope=JSON.parse(sessionStorage.getItem("context-graph-session-scope") || "{}");if(["primary","subagent","unknown"].includes(scope.kind)) {catalogKind=scope.kind;catalogParent=typeof scope.parent==="string"?scope.parent:"";}} catch (_) {}
   let restoredMindFilters=null;
   let mindDrawFrame=0;
+  let sourcePanelWasOpen=false;
   const mindHosts=["mind-sessions","mind-topics","mind-questions","mind-answers"];
   const mindMotionQuery=window.matchMedia("(prefers-reduced-motion: reduce)");
   const mindMotionControl=byId("mind-reduce-motion");
@@ -510,6 +512,11 @@ if(typeof document !== "undefined") (() => {
   function button(text,action,className="") {
     const node = el("button",text,className); node.type="button"; node.addEventListener("click",action); return node;
   }
+  function managementMenu(label,control) {
+    const menu=el("details","","node-management inline-management"),toggle=el("summary","⋯");
+    toggle.setAttribute("aria-label",label);toggle.title=label;
+    const content=el("div","","node-management-content");content.append(control);menu.append(toggle,content);return menu;
+  }
   // Old offline exports have no lineage fields. Explicit unknown metadata is
   // kept separate; absent legacy fields remain readable as ordinary sessions.
   const sessionKind=session=>["primary","subagent","unknown"].includes(session.sessionKind)?session.sessionKind:"primary";
@@ -625,25 +632,20 @@ if(typeof document !== "undefined") (() => {
     }
   }
   async function loadQuestionOrder() {
+    qaFailed=0;qaFailedSessions.clear();
     const contexts = {...savedContext};
     const sessions = [...new Set(data.nodes.filter(QuestionAnswers.isQuestion).flatMap(node=>node.provenance.map(item=>item.session_id)))];
     if(!liveCatalog) { qaLoading=false;render();return; }
     async function readSession(session) {
-      const result = await fetch("timeline/messages.json?"+new URLSearchParams({session,offset:"0",limit:"200"}),{cache:"no-store"});
+      const result = await fetch("timeline/context.json?"+new URLSearchParams({session}),{cache:"no-store"});
       if(!result.ok) throw new Error("Unavailable");
       const first = await result.json();
+      if(first.session?.id!==session || !Array.isArray(first.messages))throw new Error('Invalid context');
       // Keep only metadata needed to order rechecked anchors, never copy raw text.
       const metadata = rows => rows.map(({id,index,role,timestamp,hasUserContent})=>({id,index,role,timestamp,hasUserContent}));
       const fallback=savedContext[session];
       const structure=first.analysis.structure || (fallback?.session.importedAt===first.session.importedAt ? fallback?.analysis.structure : []) || [];
       const context = {session:first.session,analysis:{...first.analysis,structure},messages:metadata(first.messages)};
-      for(let offset=first.messages.length;offset<first.total;offset+=200) {
-        const response = await fetch("timeline/messages.json?"+new URLSearchParams({session,offset,limit:"200"}),{cache:"no-store"});
-        if(!response.ok) throw new Error("Unavailable");
-        const next = await response.json();
-        if(next.revision!==first.revision || next.offset!==offset || !next.messages.length) throw new Error("Changed snapshot");
-        context.messages.push(...metadata(next.messages));
-      }
       contexts[session] = context;
     }
     // Bound concurrent local reads even when many sessions have been analysed.
@@ -732,7 +734,7 @@ if(typeof document !== "undefined") (() => {
     card.classList.add("mind-session-node");
     const identity=el("span","","session-identity");
     identity.append(heading,
-      el("span",session.project || "프로젝트 미확정","session-project"),
+      el("span",`${session.provider==='claude'?'Claude Code':'Codex'} · ${session.project || "프로젝트 미확정"}`,"session-project"),
       el("span",activity,"mind-activity"),
       el("span",`${session.hasAnalysis?"분석 있음":"분석 대기"}${session.messageCount!==undefined?" · 메시지 "+session.messageCount+"개":""}`,"mind-meta"));
     if(catalogRows().filter(item=>sessionTitle(item)===title).length>1)identity.append(el("span",`같은 제목 구분 · ${session.id.slice(-8)}`,"mind-activity session-key"));
@@ -755,6 +757,7 @@ if(typeof document !== "undefined") (() => {
     const card=button("",()=>{
       if(!live) return choose(entry.nodeId);
       if(mode==="qa") try {sessionStorage.setItem("context-graph-qa-return",JSON.stringify({node:entry.nodeId,session:entry.source.session_id}));} catch (_) {}
+      if(mind){explorer.openReader(entry.source.session_id,evidence.messageId);return;}
       return openSource(entry.source,card,evidence.sourceMessageId);
     },
       (mind?"mind-node ":"")+"answer-evidence-card");
@@ -767,8 +770,9 @@ if(typeof document !== "undefined") (() => {
     else card.append(el("span","인용 내용은 질문·근거 보기에서 확인할 수 있습니다.","mind-meta"));
     card.append(el("span",live?"답변 원문 읽기 →":"질문·근거 보기 →","qa-read"));
     const wrapper=el("div","","answer-evidence-entry");
-    wrapper.append(card,button("답변 표시 제목 수정",()=>openItemTitleEditor({source:entry.source,nodeId:entry.nodeId,
-      label:"답변 근거",evidenceMessage:evidence.messageId,originalTitle}),"item-title-trigger"));
+    const edit=button("답변 표시 제목 수정",()=>openItemTitleEditor({source:entry.source,nodeId:entry.nodeId,
+      label:"답변 근거",evidenceMessage:evidence.messageId,originalTitle}),"item-title-trigger");
+    wrapper.append(card,mind?managementMenu("답변 근거 관리",edit):edit);
     return wrapper;
   }
   function mindPage(host,items,index,makeCard,empty,groupLabel=null) {
@@ -792,7 +796,7 @@ if(typeof document !== "undefined") (() => {
     list.scrollTop=scrollTop;
     const active=list.querySelector('.mind-node[aria-pressed="true"]');
     if(active && (!keepScroll || previousList.dataset.selectedKey!==active.dataset.key))
-      list.scrollTop=Math.max(0,active.offsetTop-list.clientHeight/2+active.offsetHeight/2);
+      list.scrollTop=Math.max(0,active.offsetTop-Math.max(0,(list.clientHeight-active.offsetHeight)/2));
     list.dataset.selectedKey=active?.dataset.key || "";
     if(items.length>pageSize) {
       const paging=el("div","","paging"),previous=button("이전",()=>{mindPages[index]--;renderMind(index);rememberMind();}),next=button("다음",()=>{mindPages[index]++;renderMind(index);rememberMind();});
@@ -836,7 +840,8 @@ if(typeof document !== "undefined") (() => {
         const b=mindBox(to,canvas),x1=a.x+a.width,y1=a.y+a.height/2,x2=b.x,y2=b.y+b.height/2,mid=(x1+x2)/2;
         const evidence=to.dataset.kind==="answer-evidence";
         const line=`M ${x1} ${y1} C ${mid} ${y1},${mid} ${y2},${x2} ${y2}`;
-        const path=svgEl("path",{d:line,class:"mind-edge"+(evidence?" mind-evidence-edge":""),pathLength:1,"data-column":column});
+        const focused=to.getAttribute("aria-pressed")==="true" || column===3 && byId(toId).querySelectorAll('.mind-node[aria-pressed="true"]').length===0;
+        const path=svgEl("path",{d:line,class:"mind-edge"+(focused?" mind-edge-active":"")+(evidence?" mind-evidence-edge":""),pathLength:1,"data-column":column});
         if(!reduced && column===animateColumn && !evidence) {path.classList.add("mind-edge-reveal");path.style.setProperty("--mind-delay",`${index*38}ms`);}
         svg.append(path);
       }
@@ -859,6 +864,9 @@ if(typeof document !== "undefined") (() => {
       .filter(session=>(!project || session.project===project) && (!term || sessionSearchText(session).includes(term)));
     if(catalogReady && mindSession && !catalog.some(session=>session.id===mindSession)) {mindSession="";mindTopic=null;mindQuestion="";mindPages[1]=mindPages[2]=mindPages[3]=0;catalogOnly=false;}
     const session=catalog.find(session=>session.id===mindSession),group=qaGroups.find(group=>group.sessionId===mindSession);
+    explorer.updateSession(session?.id || "");
+    byId('mind-canvas').classList.remove('raw-chronology');
+    byId('mind-answers-title').textContent='답변 · 근거';
     syncSessionViewControls();
     byId("session-mindmap").setAttribute("aria-label",mindSessionListOpen?"세션 목록":"세션 마인드맵");
     byId("mind-canvas").classList.toggle("session-picker-open",mindSessionListOpen);
@@ -885,6 +893,11 @@ if(typeof document !== "undefined") (() => {
     byId("mind-topics").closest(".mind-column").dataset.stageLabel=auxiliaryMode?"02 / AUXILIARY":"02 / TOPICS";
     byId("mind-questions").closest(".mind-column").dataset.stageLabel=auxiliaryMode?"03 / NOTES":"03 / QUESTIONS";
     const branch=QuestionAnswers.mindBranch(group,mindTopic,mindQuestion,mindTopicGroup);
+    const questionIndex=branch.questions.findIndex(entry=>QuestionAnswers.occurrenceKey(entry)===mindQuestion);
+    byId("question-stepper").hidden=mindSessionListOpen || auxiliaryMode;
+    byId("question-previous").disabled=questionIndex<=0;
+    byId("question-next").disabled=auxiliaryMode || !branch.questions.length || questionIndex>=branch.questions.length-1;
+    byId("question-position").textContent=questionIndex<0?`질문 ${branch.questions.length}개`:`${questionIndex+1} / ${branch.questions.length}${branch.question?.anchor?"":" · 순서 미확정"}`;
     byId("mind-stage-nav").classList.toggle("auxiliary",auxiliaryMode);
     const stepLabels=["세션","주제",auxiliaryMode?"보조 항목":"질문","답변"];
     const enabled=[true,Boolean(session),mindTopic!==null,Boolean(branch.question)&&!auxiliaryMode];
@@ -904,7 +917,7 @@ if(typeof document !== "undefined") (() => {
     const noQuestions=qaFailedSessions.has(mindSession) ? "이 세션의 분석을 불러오지 못했습니다. 새로고침해 다시 확인해 주세요." : session?.hasAnalysis===false ? "아직 분석하지 않은 세션입니다. 아래 버튼으로 원문을 읽을 수 있습니다." : "저장된 질문이 없습니다. 원문 대화를 확인할 수 있습니다.";
     mindPage(byId("mind-sessions"),catalog,0,item=>mindSessionCard(item,item.id===mindSession,
       ()=>{const changed=item.id!==mindSession;if(changed){mindSession=item.id;mindTopic=null;mindQuestion="";mindTopicGroup="primary";mindPages=[mindPages[0],0,0,0];}mindSessionListOpen=false;close();rememberMind();renderMind(changed?1:null);byId("mind-session-picker").scrollIntoView({block:"start",behavior:reducedMotion()?"auto":"smooth"});}),emptySession);
-    if(!catalogOnly) {
+    if(!catalogOnly && session?.hasAnalysis!==false) {
     mindPage(byId("mind-topics"),branch.topics,1,topic=>mindCard(topic.title,auxiliaryMode?`보조 정보 · 항목 ${QuestionAnswers.itemsForTopic(data,group,topic.value).length}개`:topicOrderLabel(topic),topic.value===mindTopic,
       ()=>{const reveal=topic.value!==mindTopic?2:null;mindTopic=topic.value;mindQuestion="";mindPages[2]=mindPages[3]=0;close();rememberMind();renderMind(reveal);},"topic",topic.value),session?noQuestions:"왼쪽에서 세션을 선택하세요.");
     if(auxiliaryMode) mindPage(byId("mind-questions"),group?QuestionAnswers.itemsForTopic(data,group,mindTopic):[],2,item=>{
@@ -915,16 +928,19 @@ if(typeof document !== "undefined") (() => {
     else mindPage(byId("mind-questions"),branch.questions,2,entry=>{
       const key=QuestionAnswers.occurrenceKey(entry),node=nodes.get(entry.nodeId);
       const card=mindCard(nodeTitle(node,entry.source),`${entry.anchor?"원문 #"+(entry.anchor.index+1):"순서 미확정"} · 답변 연결 ${entry.answers.length}개${entry.answerEvidence.length?" · 답변 근거 "+entry.answerEvidence.length+"개":""}`,key===mindQuestion,
-        ()=>{const reveal=key!==mindQuestion?3:null;mindQuestion=key;mindPages[3]=0;close();rememberMind();renderMind(reveal);},"question",key);
+        ()=>selectMindQuestion(entry),"question",key);
       card.dataset.nodeId=entry.nodeId;card.dataset.sourceNode=entry.source.source_node;return card;
     },mindTopic===null?"주제를 선택하면 질문이 시간순으로 펼쳐집니다.":"이 주제에 저장된 질문이 없습니다.");
     const answerCards=auxiliaryMode?[]:[...branch.answers.map(answer=>({kind:"linked",answer})),...branch.answerEvidence.map(evidence=>({kind:"evidence",evidence}))];
     mindPage(byId("mind-answers"),answerCards,3,item=>{
       if(item.kind==="evidence") return answerEvidenceCard(branch.question,item.evidence,true);
       const answer=item.answer;
-      const node=nodes.get(answer.nodeId),source=answer.source || resolveSource(node),card=mindCard(nodeTitle(node,source),"답변 · 클릭하여 내용과 근거 보기",selected===answer.nodeId,()=>choose(answer.nodeId,source),"answer",answer.nodeId);
+      const node=nodes.get(answer.nodeId),source=answer.source || resolveSource(node),card=mindCard(nodeTitle(node,source),"답변 · 선택하면 원문을 함께 읽습니다",selected===answer.nodeId,()=>{
+        if(answer.anchor && liveCatalog){selected=answer.nodeId;selectedSource=source;close();renderMind();explorer.openReader(source.session_id,answer.anchor.messageId);}
+        else choose(answer.nodeId,source);
+      },"answer",answer.nodeId);
       card.dataset.nodeId=answer.nodeId;card.dataset.edgeIds=answer.edgeIds.join(" ");
-      const wrapper=el("div","","answer-title-entry");wrapper.append(card,button("답변 표시 제목 수정",()=>openItemTitleEditor(itemTitleTarget(node,source,"답변")),"item-title-trigger"));return wrapper;
+      const wrapper=el("div","","answer-title-entry");wrapper.append(card,managementMenu("답변 관리",button("답변 표시 제목 수정",()=>openItemTitleEditor(itemTitleTarget(node,source,"답변")),"item-title-trigger")));return wrapper;
     },branch.question?"별도 답변 관계와 확인된 답변 근거가 없습니다. 원문 대화에서 확인하세요.":"질문을 선택하면 연결된 답변과 저장된 답변 근거가 펼쳐집니다.",
       item=>item.kind==="linked"?"연결된 분석 답변":"질문에 저장된 답변 근거");
     }
@@ -936,6 +952,7 @@ if(typeof document !== "undefined") (() => {
         const title=branch.topics.find(topic=>topic.value===mindTopic)?.title || "주제 미확정",topic=el("strong",title);topic.title=title;
         trail.append(el("span","/","breadcrumb-arrow"),el("span",auxiliaryMode?"보조 정보":"주제","breadcrumb-label"),topic);
       }
+      if(branch.question){const name=el("strong",nodeTitle(nodes.get(branch.question.nodeId),branch.question.source));name.title=name.textContent;trail.append(el("span","/","breadcrumb-arrow"),el("span","질문","breadcrumb-label"),name);}
       const notice=assignmentNotice(session);if(notice)trail.append(el("span",notice,"mind-selection-note"));
     } else trail.append(el("span","먼저 세션을 선택하세요. 최근 대화순으로 표시합니다.","hint"));
     if(!catalogOnly) {
@@ -947,6 +964,7 @@ if(typeof document !== "undefined") (() => {
       const source=button("이 질문과 앞뒤 원문 대화 읽기",()=>{rememberMind();openSource(entry.source,source,entry.anchor.sourceMessageId);},"source-open");
       source.disabled=!entry.anchor || !/^https?:$/.test(location.protocol);
       actions.append(source,button("질문·근거 보기",()=>choose(entry.nodeId,entry.source)));
+      if(entry.anchor)actions.append(button("하단 원문 패널",()=>explorer.openReader(entry.source.session_id,entry.anchor.messageId)));
     } else if(session) {
       const evidence=branch.topics.find(topic=>topic.value===mindTopic)?.userEvidence;
       if(evidence) {
@@ -955,10 +973,14 @@ if(typeof document !== "undefined") (() => {
         original.disabled=!/^https?:$/.test(location.protocol);actions.append(original);
       }
       const source=button("이 세션의 원문 대화 읽기",()=>openSession(mindSession));source.disabled=!/^https?:$/.test(location.protocol);actions.append(source);
+      if(liveCatalog)actions.append(button("하단에서 대화 읽기",()=>explorer.openReader(mindSession)));
     }
     }
     byId("info").textContent=`${{primary:"일반 대화",subagent:"보조 작업",unknown:"분류 미확정"}[catalogKind]} ${catalog.length}개`;
+    const notice=byId("mind-session-notice");notice.hidden=!session || session.hasAnalysis!==false || mindSessionListOpen;notice.replaceChildren();
+    if(!notice.hidden)notice.append(el("span","분석 대기 · 아직 주제와 질문으로 정리되지 않았지만 저장된 원문은 읽을 수 있습니다."),button("원문 읽기",()=>explorer.openReader(session.id)));
     byId("view-info").textContent=qaLoading?"저장된 분석과 원문 근거를 확인하고 있습니다…":(qaFailed?"일부 세션의 분석·원문 순서를 불러오지 못했습니다. 새로고침해 다시 확인해 주세요. ":"")+"실선은 세션·주제 소속과 저장된 답변 관계, 점선은 질문에 저장된 답변 근거를 나타냅니다. 원문 순서가 없는 질문은 순서 미확정으로 표시합니다.";
+    rawTurns.render(!mindSessionListOpen?session:null);
     if(focus) {
       const host=byId(focus.host);
       const target=focus.kind ? [...(host?.querySelectorAll(".mind-node") || [])].find(node=>node.dataset.kind===focus.kind&&node.dataset.key===focus.key)
@@ -978,6 +1000,46 @@ if(typeof document !== "undefined") (() => {
     }
   }
   function reducedMotion() {return mindMotionQuery.matches || mindMotionControl.checked;}
+  function centerMindSelection() {
+    const open=document.body.classList.contains('has-source-reader'),revealed=open&&!sourcePanelWasOpen;sourcePanelWasOpen=open;
+    if(mode!=="mind" || mindSessionListOpen)return;
+    requestAnimationFrame(()=>{if(revealed){const target=window.matchMedia('(min-width: 1200px)').matches?byId('mind-canvas'):byId('mind-questions').closest('.mind-column');target.scrollIntoView({block:'start',behavior:'auto'});}
+      for(const host of mindHosts){const list=byId(host).querySelector('.mind-node-list'),active=list?.querySelector('.mind-node[aria-pressed="true"]');
+      if(active)list.scrollTop=Math.max(0,active.offsetTop-Math.max(0,(list.clientHeight-active.offsetHeight)/2));}scheduleMindDraw();});
+  }
+  function selectMindQuestion(entry) {
+    const group=qaGroups.find(g=>g.sessionId===mindSession),branch=QuestionAnswers.mindBranch(group,mindTopic,mindQuestion,mindTopicGroup);
+    const index=branch.questions.findIndex(q=>QuestionAnswers.occurrenceKey(q)===QuestionAnswers.occurrenceKey(entry));if(index<0)return;
+    mindQuestion=QuestionAnswers.occurrenceKey(entry);mindPages[2]=Math.floor(index/8);mindPages[3]=0;
+    selected=null;close();rememberMind();renderMind(3);
+    if(entry.anchor)explorer.openReader(entry.source.session_id,entry.anchor.messageId);
+    else explorer.unavailable("이 질문의 원문 순서가 미확정입니다. 질문·근거 보기에서 저장된 인용을 확인하세요.");
+  }
+  function searchTargets(hit) {
+    return SessionAtlasTools.matchingEntries(qaGroups,hit).map(entry=>{
+      const group=qaGroups.find(g=>g.sessionId===hit.sessionId),topic=group.topics.find(t=>t.id===entry.topicId);
+      return {sessionId:hit.sessionId,questionKey:QuestionAnswers.occurrenceKey(entry),
+        label:(topic?.title || "주제 미확정")+" › "+nodeTitle(nodes.get(entry.nodeId),entry.source)};
+    });
+  }
+  function navigateExplorer(target) {
+    const session=catalogRows().find(s=>s.id===target.sessionId);if(!session)return;
+    const changed=mindSession!==session.id;mindSession=session.id;mode="mind";mindSessionListOpen=false;
+    catalogKind=sessionKind(session);catalogParent=catalogKind==="subagent"?parentKey(session):"";
+    byId("query").value="";byId("project").value="";restoredMindFilters=null;
+    if(changed){mindTopic=null;mindQuestion="";mindTopicGroup="primary";mindPages=[0,0,0,0];}
+    if(target.sourceMessage && session.hasAnalysis===false)rawTurns.target(target.sourceMessage);
+    const group=qaGroups.find(g=>g.sessionId===session.id),entry=group?.entries.find(e=>QuestionAnswers.occurrenceKey(e)===target.questionKey);
+    if(entry){const topic=group.topics.find(t=>t.id===entry.topicId);mindTopicGroup=topic?.displayGroup==="auxiliary"?"auxiliary":"primary";
+      mindTopic=entry.topicId?"topic:"+entry.topicId:"unassigned";mindQuestion=QuestionAnswers.occurrenceKey(entry);
+      const branch=QuestionAnswers.mindBranch(group,mindTopic,mindQuestion,mindTopicGroup);
+      mindPages[1]=Math.max(0,Math.floor(branch.topics.findIndex(t=>t.value===mindTopic)/8));
+      mindPages[2]=Math.max(0,Math.floor(branch.questions.findIndex(e=>QuestionAnswers.occurrenceKey(e)===mindQuestion)/8));mindPages[3]=0;
+      selected=entry.nodeId;selectedSource=entry.source;
+    }
+    mindPages[0]=Math.max(0,Math.floor(scopedCatalog().slice().sort(recentSessions).findIndex(s=>s.id===session.id)/8));
+    close();rememberMind();render();centerMindSelection();byId("mind-canvas").scrollIntoView({block:"start",behavior:"auto"});
+  }
   function renderQuestionAnswers() {
     const host=byId("qa-timeline"), fragment=document.createDocumentFragment();
     const selection=sessionPicker();
@@ -1203,6 +1265,8 @@ if(typeof document !== "undefined") (() => {
     if(mode==="focus") draw();
     if(mode==="qa") renderQuestionAnswers();
     if(mode==="mind") renderMind();
+    else {rawTurns.render(null);explorer.closeReader();explorer.updateSession(mode==="qa"?qaSession:"");}
+    explorer.refresh();
   }
   if(mode==="mind" && restoredMindFilters) byId("query").value=restoredMindFilters.query;
   else restoredMindFilters=null;
@@ -1230,6 +1294,11 @@ if(typeof document !== "undefined") (() => {
   byId("mind-question-title-edit").addEventListener("click",()=>{
     const group=qaGroups.find(group=>group.sessionId===mindSession),entry=group?.entries.find(entry=>QuestionAnswers.occurrenceKey(entry)===mindQuestion);
     if(entry)openItemTitleEditor(itemTitleTarget(nodes.get(entry.nodeId),entry.source,"질문"));
+  });
+  for(const [id,direction] of [["question-previous",-1],["question-next",1]])byId(id).addEventListener("click",()=>{
+    if(rawTurns.active()){rawTurns.move(direction);return;}
+    const group=qaGroups.find(g=>g.sessionId===mindSession),branch=QuestionAnswers.mindBranch(group,mindTopic,mindQuestion,mindTopicGroup);
+    const index=branch.questions.findIndex(e=>QuestionAnswers.occurrenceKey(e)===mindQuestion),next=branch.questions[index+direction];if(next)selectMindQuestion(next);
   });
   byId("item-title-save").addEventListener("click",()=>saveItemTitle());
   byId("item-title-reset").addEventListener("click",()=>saveItemTitle(true));
@@ -1284,6 +1353,10 @@ if(typeof document !== "undefined") (() => {
   });
   window.addEventListener("pageshow",()=>{if(catalogStopped) {catalogStopped=false;refreshCatalog();}});
   document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible") refreshCatalog();});
+  window.addEventListener('message',event=>{
+    if(event.origin!==location.origin || event.source!==window.parent || event.data?.type!=='context-graph-refresh-display')return;
+    refreshCatalog();loadQuestionOrder();
+  });
   mindMotionQuery.addEventListener("change",syncMindMotion);
   mindMotionControl.addEventListener("change",()=>{try {sessionStorage.setItem("context-graph-reduced-motion",String(mindMotionControl.checked));} catch (_) {} syncMindMotion();});
   // Transient DOM-only lifecycle markers let motion be checked without exposing
@@ -1309,6 +1382,14 @@ if(typeof document !== "undefined") (() => {
   byId("fit").addEventListener("click",()=>{fit=!fit;byId("fit").setAttribute("aria-pressed",String(fit));draw();});
   function close(){byId("detail-panel").hidden=true;document.body.classList.remove("has-detail");}
   byId("close-detail").addEventListener("click",close);document.addEventListener("keydown",event=>{if(event.key==="Escape")close();});
+  let navigationStorage=sessionStorage;try{navigationStorage=window.localStorage || sessionStorage;}catch(_){}
+  const explorer=SessionAtlasTools.create({document,fetch,storage:navigationStorage,live:liveCatalog,
+    getSessions:catalogRows,getTargets:searchTargets,onNavigate:navigateExplorer,onLayout:centerMindSelection,
+    onFullPage:(session,message)=>{rememberMind();if(window.parent!==window)window.parent.postMessage({type:message?"context-graph-open-source":"context-graph-open-session",session,...(message?{message}:{})},location.origin);
+      else location.assign("./?"+new URLSearchParams({view:"timeline",session,...(message?{message}:{})}));}});
+  const rawTurns=RawTurns.create({document,fetch,live:liveCatalog,page:mindPage,card:mindCard,
+    openSource:(sid,message)=>explorer.openReader(sid,message),redraw:()=>{if(mode==='mind')renderMind();},remember:rememberMind,
+    locate:index=>{mindPages[2]=Math.max(0,Math.floor(index/8));mindPages[3]=0;}});
   const requested=new URLSearchParams(location.hash.slice(1)).get("node");
   syncMindMotion();
   if(requested && nodes.has(requested)) choose(requested);else render();

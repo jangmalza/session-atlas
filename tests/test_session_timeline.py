@@ -389,5 +389,16 @@ class SessionTimelineTests(unittest.TestCase):
             raised.exception.close()
         self.assertEqual(self.unchanged_tables(),before)
 
+    def test_search_exposes_only_verified_source_item_ids_for_map_navigation(self):
+        before=self.unchanged_tables()
+        question=self.reader.search('예시 질문')['results'][0]
+        answer=self.reader.search('예시 답변')['results'][0]
+        self.assertEqual(question['analysisNodeIds'],['question'])
+        self.assertEqual(answer['analysisNodeIds'],['answer'])
+        self.assertEqual(self.unchanged_tables(),before)
+        changed=deepcopy(self.analysis);changed['nodes'][0]['evidence'][0]['verified']=False
+        self.import_analysis(changed)
+        self.assertEqual(self.reader.search('예시 질문')['results'][0]['analysisNodeIds'],[])
+
 
 if __name__ == '__main__': unittest.main()

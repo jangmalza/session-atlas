@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "database": "C:/Users/you/.codex-context-graph/knowledge.db",
+  "codexHome": "C:/Users/you/.codex",
+  "claudeHome": "C:/Users/you/.claude",
+  "interval": 10,
+  "services": [
+    {
+      "name": "collector",
+      "mode": "watch",
+      "port": 8765,
+      "directory": "C:/Users/you/.codex-context-graph/live"
+    }
+  ]
+}

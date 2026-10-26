@@ -87,13 +87,13 @@ def _verified_own_request(row: dict, sid: str, metadata: dict) -> bool:
 
 def _request_previews(rows: list[dict], sid: str, metadata: dict | None) -> dict:
     """Live-only source excerpts; forks must use verified post-boundary requests."""
-    own_only = metadata is not None and (metadata.get("forked") is not False
+    own_only = metadata is not None and metadata.get('provider')!='claude' and (metadata.get("forked") is not False
                                          or metadata.get("sessionKind") != "primary")
 
     def find(indices):
         for index in indices:
             row = rows[index]
-            if row["role"] != "user":
+            if row["role"] != "user" or row['source_kind']=='claude_context':
                 continue
             text = _request_title(row["content"], limit=180)
             if not text or (own_only and not _verified_own_request(row, sid, metadata)):
@@ -116,14 +116,14 @@ def _session_title(session, rows: list[dict], analysis: dict, metadata: dict | N
         if (isinstance(title, str) and title.strip()
                 and title.strip().casefold() not in {"codex session", f"codex session {sid}".casefold()}):
             return {"title": title, "titleSource": "analysis", "titleMessageId": None}
-    needs_boundary = metadata is not None and (metadata.get("forked") is not False
+    needs_boundary = metadata is not None and metadata.get('provider')!='claude' and (metadata.get("forked") is not False
                                                or metadata.get("sessionKind") != "primary")
     native = metadata.get("nativeTitle") if metadata else None
     if not needs_boundary and isinstance(native, str) and metadata.get("nativeTitleUsable"):
         if title := _request_title(native):
             return {"title": title, "titleSource": "native", "titleMessageId": None}
     for row in rows:
-        if row["role"] != "user" or (needs_boundary and not _verified_own_request(row, sid, metadata)):
+        if row["role"] != "user" or row['source_kind']=='claude_context' or (needs_boundary and not _verified_own_request(row, sid, metadata)):
             continue
         if title := _request_title(row["content"]):
             return {"title": title, "titleSource": "own_request" if needs_boundary else "first_user",
@@ -296,15 +296,20 @@ class TimelineReader:
                            if sid in overlays or sid in display}
             return _hash([overlays, display, source_maps, session_names])
 
-    def _entries(self, con: sqlite3.Connection) -> list[dict]:
-        stored = {row["session_id"]: dict(row) for row in con.execute("SELECT * FROM session_maps")}
+    def _entries(self, con: sqlite3.Connection, only: set[str] | None = None) -> list[dict]:
+        if only is not None and not only:return []
+        params=tuple(sorted(only)) if only is not None else ()
+        where=' WHERE s.id IN ('+','.join('?' for _ in params)+')' if only is not None else ''
+        stored = {row["session_id"]: dict(row) for row in con.execute("SELECT * FROM session_maps") if only is None or row['session_id'] in only}
+        has_providers=con.execute("SELECT 1 FROM sqlite_master WHERE name='session_providers'").fetchone()
+        providers={r['session_id']:dict(r) for r in con.execute('SELECT * FROM session_providers')} if has_providers else {}
         overlays = read_overlays(con)
         display_preferences = read_topic_display(self.database)
         session_names = read_session_names(self.database)
         sessions = con.execute("""SELECT s.id,s.project,s.branch,s.first_seen,
             count(m.id) AS raw_count,max(m.rowid) AS last_row
-            FROM sessions s LEFT JOIN messages m ON m.session_id=s.id
-            GROUP BY s.id ORDER BY s.id""").fetchall()
+            FROM sessions s LEFT JOIN messages m ON m.session_id=s.id"""+where+
+            " GROUP BY s.id ORDER BY s.id",params).fetchall()
         metadata = {}
         preview_metadata = {}
         if self._metadata is not None:
@@ -312,7 +317,7 @@ class TimelineReader:
             for sid, path in con.execute("SELECT session_id,source_path FROM messages GROUP BY session_id,source_path "
                                          "UNION SELECT session_id,path FROM sources"):
                 paths.setdefault(sid, []).append(path)
-            metadata = self._metadata.read([session["id"] for session in sessions], source_paths=paths)
+            metadata = self._metadata.read([session["id"] for session in sessions if session['id'] not in providers], source_paths=paths)
             missing_primary = [sid for sid, value in metadata.items()
                                if value.get("sessionKind") == "primary" and not value.get("boundaryKnown")]
             if missing_primary:
@@ -328,9 +333,15 @@ class TimelineReader:
             raw_key = (session["raw_count"], session["last_row"])
             rows = old["rows"] if old.get("raw_key") == raw_key else cg.effective_messages(con, sid)
             user_content = old["user_content"] if old.get("raw_key") == raw_key and "user_content" in old else [
-                row["role"] == "user" and bool(_request_title(row["content"])) for row in rows]
+                row["role"] == "user" and row['source_kind']!='claude_context' and bool(_request_title(row["content"])) for row in rows]
             saved = stored.get(sid, {})
             lineage = metadata.get(sid, {}) if self._metadata is not None else None
+            provider=providers.get(sid)
+            if provider:
+                lineage={'sessionKind':provider['session_kind'],'parentSessionId':provider['parent_session_id'],
+                         'groupSessionId':provider['parent_session_id'] or sid,'rootSessionId':provider['parent_session_id'] or sid,
+                         'lineageStatus':'known','forked':False,'boundaryKnown':True,
+                         'nativeTitle':provider['title'],'nativeTitleUsable':bool(provider['title']), 'provider':'claude'}
             metadata_revision = lineage.get("revision", _hash(lineage)) if lineage is not None else ""
             preview_lineage = preview_metadata.get(sid, lineage)
             preview_metadata_revision = preview_lineage.get("revision", _hash(preview_lineage)) if preview_lineage is not None else ""
@@ -374,6 +385,8 @@ class TimelineReader:
                 request_previews = _request_previews(rows, sid, preview_lineage)
             items = [n for n in analysis.get("nodes", []) if n.get("kind") == "item"]
             header = {"id": sid, "project": session["project"], "branch": session["branch"],
+                      "provider":provider['provider'] if provider else 'codex',
+                      "nativeSessionId":provider['native_id'] if provider else sid,
                       **display_title, "requestPreviews": request_previews,
                       **({'displayTitle':session_name} if session_display['status']=='active' else {}),
                       'sessionDisplay':session_display,
@@ -404,7 +417,7 @@ class TimelineReader:
                      "by_message": by_message, "by_node": by_node, "assistant_evidence": assistant_evidence}
             self._cache[sid] = entry
             entries.append(entry)
-        self._cache = {sid: entry for sid, entry in self._cache.items() if sid in retained}
+        if only is None:self._cache = {sid: entry for sid, entry in self._cache.items() if sid in retained}
         return sorted(entries, key=lambda e: (bool(e["rows"]), e["header"]["lastMessageAt"], e["header"]["id"]), reverse=True)
 
     def read(self, session: str | None = None, offset: int | None = None, limit: int = 100,
@@ -415,7 +428,7 @@ class TimelineReader:
             con.row_factory = sqlite3.Row
             con.execute("PRAGMA query_only=ON")
             con.execute("BEGIN")
-            entries = self._entries(con)
+            entries = self._entries(con,{session} if session is not None else None)
             if session is None:
                 headers = [entry["header"] for entry in entries]
                 return {"sessions": headers, "revision": _hash(headers), "autoAnalysis": False}
@@ -423,6 +436,7 @@ class TimelineReader:
             if entry is None:
                 raise KeyError("Unknown timeline session")
             rows, analysis, baseline = entry["rows"], entry["analysis"], entry["baseline"]
+            native={r['message_id']:dict(r) for r in con.execute('SELECT n.* FROM native_message_ids n JOIN messages m ON m.id=n.message_id WHERE m.session_id=?',(session,))} if con.execute("SELECT 1 FROM sqlite_master WHERE name='native_message_ids'").fetchone() else {}
             start = max(0, len(rows) - limit) if offset is None else min(offset, max(0, len(rows) - 1))
             if message is not None:
                 target = next((i for i, row in enumerate(rows) if row["id"] == message), None)
@@ -435,6 +449,7 @@ class TimelineReader:
                 references = entry["by_message"].get(row["id"], [])
                 state = "linked" if references else "analysed" if baseline is not None and index < baseline else "pending" if baseline is not None else "unconfirmed"
                 messages.append({"id": row["id"], "index": index, "transcriptId": f"m{index+1}",
+                                 **({'nativeMessageId':native[row['id']]['native_id'],'parentNativeId':native[row['id']]['parent_native_id']} if row['id'] in native else {}),
                                  "role": row["role"], "timestamp": row["at"], "content": row["content"],
                                  "hasUserContent": entry["user_content"][index],
                                  "analysisNodeIds": references, "analysisState": state})
@@ -448,24 +463,41 @@ class TimelineReader:
                                  "anchors": entry["by_node"], "baselineMessageCount": baseline,
                                  "unplacedIds": [node["id"] for node in nodes if not entry["by_node"].get(node["id"])]}}
 
-    def question_context(self, sessions: set[str]) -> dict:
+    def question_context(self, sessions: set[str], *, live: bool = False) -> dict:
         """Export anchors and stored analysis titles, without source-derived excerpts."""
         with self._lock, closing(sqlite3.connect(self.database.as_uri() + "?mode=ro", uri=True, timeout=5)) as con:
             con.row_factory = sqlite3.Row
             con.execute("PRAGMA query_only=ON")
             con.execute("BEGIN")
             return {entry["header"]["id"]: {
-                "session": _offline_header(entry["header"]),
+                "session": entry['header'] if live else _offline_header(entry["header"]),
+                "revision":entry['revision'],
                 "messages": [{"id": row["id"], "index": index, "role": row["role"], "timestamp": row["at"],
                               "hasUserContent": entry["user_content"][index]}
                              for index, row in enumerate(entry["rows"])],
                 "analysis": {"anchors": entry["by_node"],
                              "itemLabels":entry['item_labels'], "evidenceTitles":entry['evidence_titles'],
-                             "assistantEvidence": _offline_assistant_evidence(entry["assistant_evidence"]),
+                             "assistantEvidence": entry['assistant_evidence'] if live else _offline_assistant_evidence(entry["assistant_evidence"]),
                              "structure": entry["structure"], "topicAssignment": entry["topic_assignment"], "relations": [
                     {key: relation[key] for key in ("id", "from", "to", "type") if key in relation}
                     for relation in entry["analysis"].get("relations", [])]}}
-                for entry in self._entries(con) if entry["header"]["id"] in sessions}
+                for entry in self._entries(con,sessions)}
+
+    def turns(self, session: str) -> dict:
+        """Chronological user/assistant groups, explicitly NOT semantic answers."""
+        with self._lock,closing(sqlite3.connect(self.database.as_uri()+'?mode=ro',uri=True,timeout=5)) as con:
+            con.row_factory=sqlite3.Row;con.execute('PRAGMA query_only=ON');con.execute('BEGIN')
+            entries=self._entries(con,{session})
+            if not entries:raise KeyError(session)
+            entry=entries[0];turns=[];current=None
+            for index,row in enumerate(entry['rows']):
+                item={'messageId':row['id'],'index':index,'timestamp':row['at'],
+                      'preview':_request_title(row['content'],limit=180)}
+                if row['role']=='user' and entry['user_content'][index]:
+                    current={'request':item,'responses':[]};turns.append(current)
+                elif row['role']=='assistant' and row['source_kind']!='claude_context' and current is not None:
+                    current['responses'].append(item)
+            return {'session':entry['header'],'revision':entry['revision'],'kind':'chronological','turns':turns,'autoAnalysis':False}
 
 
     def search(self, query: str, *, project: str = "", role: str = "", session: str = "",
@@ -487,7 +519,14 @@ class TimelineReader:
             con.row_factory = sqlite3.Row
             con.execute("PRAGMA query_only=ON")
             con.execute("BEGIN")
-            for entry in self._entries(con):
+            # Select matching sessions before loading their full metadata/maps.
+            # Python's literal regex retains existing Unicode search semantics.
+            con.create_function('literal_match',1,lambda content:int(bool(expression.search(content or ''))))
+            clauses=['literal_match(m.content)'];parameters=[]
+            for column,value in [('s.project',project),('m.role',role),('m.session_id',session)]:
+                if value:clauses.append(column+'=?');parameters.append(value)
+            matching={row[0] for row in con.execute('SELECT DISTINCT m.session_id FROM messages m JOIN sessions s ON s.id=m.session_id WHERE '+' AND '.join(clauses),parameters)}
+            for entry in self._entries(con,matching):
                 header = entry["header"]
                 if (project and header["project"] != project) or (session and header["id"] != session):
                     continue
@@ -502,7 +541,8 @@ class TimelineReader:
                         hits.append({"id":row["id"], "sessionId":header["id"], "sessionTitle":header.get("displayTitle") or header["title"],
                                      "project":header["project"], "role":row["role"], "timestamp":row["at"], "index":index,
                                      "snippet":row["content"][start:end], "snippetStart":start,
-                                     "matchStart":match.start()-start, "matchEnd":match.end()-start})
+                                     "matchStart":match.start()-start, "matchEnd":match.end()-start,
+                                     "analysisNodeIds":list(entry['by_message'].get(row['id'], []))})
                     total += 1
         return {"results":hits, "total":total, "offset":offset, "limit":limit, "autoAnalysis":False}
 

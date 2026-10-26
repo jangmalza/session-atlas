@@ -73,11 +73,16 @@
   function paint(next, refreshAnalysis = false) {
     const nextRevision = next[active + "Revision"];
     if (refreshAnalysis && loadedRevision && nextRevision && loadedRevision !== nextRevision) {
+      if(active==='graph' && next.analysisRevision===status.analysisRevision && next.uiRevision===status.uiRevision){
+        loadedRevision=nextRevision;
+        frame.contentWindow.postMessage({type:'context-graph-refresh-display'},location.origin);
+      }else{
       // Only explicit analysis/snapshot updates reload the view. Raw message
       // collection leaves the current map, selection and open dialogs intact.
       savePosition();
       location.reload();
       return;
+      }
     }
     status = next;
     mapNotice.hidden=active!=="map";document.body.classList.toggle("map-mode",active==="map");
@@ -90,6 +95,10 @@
     stateLabel.textContent = status.state === "watching" ? "자동 수집 중" : status.state === "warning" ? "수집 중 · 일부 파일 확인 필요" :
       status.state === "error" ? "갱신 실패 · 마지막 결과 표시 중" : "수집 준비 중";
     if (status.readOnlyViewer && status.state === "watching") stateLabel.textContent = "대화 기록 표시 중";
+    if(status.collector?.state==='running')stateLabel.textContent='자동 수집 정상 · 저장 기록 표시 중';
+    else if(status.collector?.state==='stopped'){stateLabel.textContent='수집기 응답 없음 · 저장 기록 표시 중';stateLabel.dataset.state='warning';}
+    else if(status.collector?.state==='warning'){stateLabel.textContent='수집 중 · 일부 기록 확인 필요';stateLabel.dataset.state='warning';}
+    else if(status.readOnlyViewer && status.state==='watching')stateLabel.textContent='수집기 상태 미확인 · 저장 기록 표시 중';
     const date = new Date(status.lastCheckedUtc);
     document.getElementById("last-checked").textContent = Number.isFinite(date.getTime()) ? "마지막 확인: " + time.format(date) : "첫 수집을 기다리고 있습니다.";
     show();
@@ -108,9 +117,15 @@
     location.assign(url.href);
   });
   window.addEventListener("message", event => {
-    if(event.origin !== location.origin || event.source !== frame.contentWindow || !["context-graph-open-source","context-graph-open-session"].includes(event.data?.type)) return;
+    if(event.origin !== location.origin || event.source !== frame.contentWindow || !["context-graph-open-source","context-graph-open-session","context-graph-reader-position"].includes(event.data?.type)) return;
     const session=event.data.session, message=event.data.message;
     if(typeof session!=="string" || !/^[A-Za-z0-9-]{1,128}$/.test(session)) return;
+    if(event.data.type==='context-graph-reader-position'){
+      if(active!=='timeline')return;
+      hashes.timeline='#'+new URLSearchParams({session});
+      try{sessionStorage.setItem('context-graph-live-positions',JSON.stringify(hashes));}catch(_){}
+      const position=new URL(location.href);position.searchParams.set('session',session);position.searchParams.delete('message');history.replaceState(null,'',position.href);return;
+    }
     if(event.data.type==="context-graph-open-source" && (typeof message!=="string" || !/^[a-f0-9]{64}$/.test(message))) return;
     savePosition();
     const url=new URL(location.href);
