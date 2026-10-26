@@ -77,6 +77,7 @@
         loadedRevision=nextRevision;
         frame.contentWindow.postMessage({type:'context-graph-refresh-display'},location.origin);
       }else{
+      if(document.querySelector('#analysis-run[open],#analysis-settings[open]'))return;
       // Only explicit analysis/snapshot updates reload the view. Raw message
       // collection leaves the current map, selection and open dialogs intact.
       savePosition();

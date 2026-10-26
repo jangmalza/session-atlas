@@ -1,4 +1,4 @@
-"""Read-only database views and explicit local display edits; no model calls."""
+"""Local views, display settings and explicitly authorized analysis jobs."""
 from __future__ import annotations
 
 import base64
@@ -117,8 +117,9 @@ def validate_map_snapshot(document: str) -> None:
 
 
 def _index_html(status: dict) -> bytes:
-    script = (Path(__file__).with_name("ui_theme.js").read_text(encoding="utf-8") + "\n" + Path(__file__).with_name("live_view.js").read_text(encoding="utf-8")).strip()
-    style = (Path(__file__).with_name("ui_theme.css").read_text(encoding="utf-8") + "\n" + Path(__file__).with_name("live_view.css").read_text(encoding="utf-8")).strip()
+    script = '\n'.join(Path(__file__).with_name(name).read_text(encoding='utf-8') for name in ('ui_theme.js', 'live_view.js', 'analysis_ui.js')).strip()
+    style = '\n'.join(Path(__file__).with_name(name).read_text(encoding='utf-8') for name in ('ui_theme.css', 'live_view.css', 'analysis_ui.css')).strip()
+    analysis_markup = Path(__file__).with_name('analysis_ui.html').read_text(encoding='utf-8')
     hashes = [base64.b64encode(hashlib.sha256(s.encode()).digest()).decode() for s in (script, style)]
     policy = ("default-src 'none'; script-src 'sha256-" + hashes[0] + "'; style-src 'sha256-" + hashes[1] +
               "'; connect-src 'self'; frame-src 'self'; img-src data:; base-uri 'none'; form-action 'none'")
@@ -135,7 +136,7 @@ def _index_html(status: dict) -> bytes:
 <nav aria-label="보기 선택"><div class="views"><button type="button" data-view="graph" aria-pressed="true">대화 탐색</button>
 <button type="button" data-view="timeline" aria-pressed="false">원문·검색</button></div><span id="last-checked">첫 수집을 기다리고 있습니다.</span></nav>
 <main><p id="initial-wait">저장된 분석 결과를 준비하고 있습니다.</p><iframe id="live-frame" title="분석 그래프" hidden></iframe></main>
-<script type="application/json" id="live-status">{payload}</script><script>{script}</script></body></html>'''.encode("utf-8")
+{analysis_markup}<script type="application/json" id="live-status">{payload}</script><script>{script}</script></body></html>'''.encode("utf-8")
 
 
 class LiveDashboard:
@@ -169,11 +170,13 @@ class LiveDashboard:
         from session_timeline import TimelineReader, timeline_html
         from context_graph import codex_home as default_codex_home
         self.timeline = TimelineReader(database, codex_home if codex_home is not None else default_codex_home())
+        from analysis_control import AnalysisControl
+        self.analysis = AnalysisControl(database, codex_home if codex_home is not None else default_codex_home())
         timeline_bytes = timeline_html()
         atomic_write(self.directory / "timeline.html", timeline_bytes)
         self._timeline_revision = fingerprint(timeline_bytes)
         assets=('graph_view.html','graph_view.js','graph_view.css','graph_design.css','explorer_tools.js','explorer_tools.css','raw_turns.js','ui_theme.js','ui_theme.css','live_view.js','live_view.css')
-        self._ui_revision=fingerprint(b''.join(Path(__file__).with_name(name).read_bytes() for name in assets)+timeline_bytes)
+        self._ui_revision=fingerprint(b''.join(Path(__file__).with_name(name).read_bytes() for name in (*assets,'analysis_ui.html','analysis_ui.js','analysis_ui.css'))+timeline_bytes)
         self._status = {"state": "starting", "autoAnalysis": False, "graphReady": False, "mapReady": False,
                         "timelineReady": True, "timelineRevision": self._timeline_revision, "analysisRevision": "",
                         "graphRevision": "", "mapRevision": "", "lastCheckedUtc": "", "scanErrors": 0,
@@ -286,6 +289,16 @@ class LiveDashboard:
                     return
                 parsed = urlsplit(self.path)
                 path = parsed.path
+                if path in ('/analysis/settings.json', '/analysis/job.json'):
+                    if parsed.query:
+                        self.send_error(400)
+                        return
+                    try:
+                        result = dashboard.analysis.settings() if path.endswith('settings.json') else dashboard.analysis.status()
+                        self._analysis_json(result)
+                    except Exception:
+                        self._analysis_json({'error': 'settings_unavailable'}, 503)
+                    return
                 if path == "/status.json":
                     payload = json.dumps(dashboard.status(), ensure_ascii=False).encode("utf-8")
                     content_type = "application/json; charset=utf-8"
@@ -353,6 +366,9 @@ class LiveDashboard:
                 # or access logs. Every query uses a read-only DB connection.
                 if not self._authorize_request(search=True):
                     return
+                if urlsplit(self.path).path.startswith('/analysis/'):
+                    self._analysis_post()
+                    return
                 if urlsplit(self.path).path in ("/topic-display.json", "/session-display.json", "/item-display.json"):
                     self._edit_display_preferences(urlsplit(self.path).path)
                     return
@@ -386,6 +402,58 @@ class LiveDashboard:
                     self.wfile.write(payload)
                 except (BrokenPipeError,ConnectionResetError,ConnectionAbortedError):
                     pass
+
+            def _analysis_json(self, result, status=200):
+                payload = json.dumps(result, ensure_ascii=False).encode('utf-8')
+                self.send_response(status)
+                self.send_header('Content-Type', 'application/json; charset=utf-8')
+                self.send_header('Content-Length', str(len(payload)))
+                self.send_header('Cache-Control', 'no-store')
+                self.send_header('X-Content-Type-Options', 'nosniff')
+                self.end_headers()
+                try:
+                    self.wfile.write(payload)
+                except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                    pass
+
+            def _analysis_post(self):
+                from analysis_control import ControlError
+                # All actions require the same authenticated origin, JSON and an
+                # action-specific custom header. GET never checks login or starts work.
+                path = urlsplit(self.path).path
+                if (len(self.headers.get_all('Origin', [])) != 1
+                        or self.headers.get_all('X-Context-Graph-Action', []) != [path.rsplit('/', 1)[-1].removesuffix('.json')]):
+                    self._analysis_json({'error': 'origin_required'}, 403)
+                    return
+                try:
+                    if (urlsplit(self.path).query or self.headers.get_all('Transfer-Encoding', [])
+                            or len(self.headers.get_all('Content-Length', [])) != 1
+                            or len(self.headers.get_all('Content-Type', [])) != 1
+                            or self.headers.get('Content-Type', '').split(';')[0].strip().lower() != 'application/json'):
+                        raise ControlError('invalid_request')
+                    length = int(self.headers['Content-Length'])
+                    if not 0 < length <= 8192:
+                        raise ControlError('invalid_request')
+                    self.connection.settimeout(10)
+                    arguments = json.loads(self.rfile.read(length).decode('utf-8'))
+                    if path == '/analysis/settings.json':
+                        result = dashboard.analysis.edit_settings(arguments)
+                    elif path == '/analysis/check-codex.json' and arguments == {}:
+                        result = dashboard.analysis.check_codex()
+                    elif path == '/analysis/preview.json' and isinstance(arguments, dict) and set(arguments) == {'session', 'mode'}:
+                        result = dashboard.analysis.preview(**arguments)
+                    elif path == '/analysis/start.json':
+                        result = dashboard.analysis.submit(arguments, dashboard.graph)
+                    else:
+                        raise ControlError('invalid_request')
+                    self._analysis_json(result)
+                except ControlError as error:
+                    self._analysis_json({'error': error.code}, error.status)
+                except (ValueError, TypeError, UnicodeError):
+                    self._analysis_json({'error': 'invalid_request'}, 400)
+                except Exception:
+                    # Never forward credential, provider or filesystem diagnostics.
+                    self._analysis_json({'error': 'operation_failed'}, 503)
 
             def _edit_display_preferences(self, path: str):
                 # Browser-only mutation: exact same origin, JSON and a custom

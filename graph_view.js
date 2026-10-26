@@ -865,6 +865,7 @@ if(typeof document !== "undefined") (() => {
     if(catalogReady && mindSession && !catalog.some(session=>session.id===mindSession)) {mindSession="";mindTopic=null;mindQuestion="";mindPages[1]=mindPages[2]=mindPages[3]=0;catalogOnly=false;}
     const session=catalog.find(session=>session.id===mindSession),group=qaGroups.find(group=>group.sessionId===mindSession);
     explorer.updateSession(session?.id || "");
+    byId('explorer-analyze').disabled=!session || !liveCatalog || window.parent===window;
     byId('mind-canvas').classList.remove('raw-chronology');
     byId('mind-answers-title').textContent='답변 · 근거';
     syncSessionViewControls();
@@ -1238,6 +1239,7 @@ if(typeof document !== "undefined") (() => {
     details();byId("detail-panel").scrollTop=0;render();
   }
   function render() {
+    byId('explorer-analyze').disabled=!liveCatalog || window.parent===window || !(mode==='mind'?mindSession:mode==='qa'?qaSession:'');
     if(byId("item-title-dialog").open)renderItemTitleEditor();
     document.body.classList.toggle("mind-mode",mode==="mind");
     byId("session-mindmap").hidden=mode!=="mind";
@@ -1383,6 +1385,11 @@ if(typeof document !== "undefined") (() => {
   function close(){byId("detail-panel").hidden=true;document.body.classList.remove("has-detail");}
   byId("close-detail").addEventListener("click",close);document.addEventListener("keydown",event=>{if(event.key==="Escape")close();});
   let navigationStorage=sessionStorage;try{navigationStorage=window.localStorage || sessionStorage;}catch(_){}
+  byId('explorer-analyze').addEventListener('click',()=>{
+    const sid=mode==='mind'?mindSession:mode==='qa'?qaSession:'',session=catalogRows().find(s=>s.id===sid);
+    if(!session || !liveCatalog || window.parent===window)return;
+    window.parent.postMessage({type:'context-graph-analyze',session:sid,title:session.displayTitle||session.title},location.origin);
+  });
   const explorer=SessionAtlasTools.create({document,fetch,storage:navigationStorage,live:liveCatalog,
     getSessions:catalogRows,getTargets:searchTargets,onNavigate:navigateExplorer,onLayout:centerMindSelection,
     onFullPage:(session,message)=>{rememberMind();if(window.parent!==window)window.parent.postMessage({type:message?"context-graph-open-source":"context-graph-open-session",session,...(message?{message}:{})},location.origin);

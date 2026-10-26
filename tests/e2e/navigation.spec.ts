@@ -101,3 +101,45 @@ test('Claude Code sessions share the catalog and source reader without semantic 
   await frame.locator('#mind-answers [data-kind="raw-response"]').first().click();
   await expect(frame.locator('.reader-target .reader-original')).toHaveText('Synthetic Claude assistant');
 });
+
+test('analysis settings keep synthetic credentials out of browser storage and never start jobs',async({page})=>{
+  const key='synthetic-e2e-key-for-isolated-fixture-only';
+  await page.goto('/?view=graph');await page.locator('#analysis-settings-open').click();
+  await expect(page.locator('#analysis-key-state')).toContainText('미등록');
+  await page.locator('#analysis-api-key').fill(key);await page.locator('#analysis-save-key').click();
+  await expect(page.locator('#analysis-key-state')).toContainText('Windows 보안 저장소');
+  await expect(page.locator('#analysis-api-key')).toHaveValue('');
+  expect(await page.evaluate(()=>JSON.stringify([localStorage,sessionStorage]))).not.toContain(key);
+  await page.reload();await page.locator('#analysis-settings-open').click();
+  await expect(page.locator('#analysis-key-state')).toContainText('등록됨');
+  await expect(page.locator('#analysis-api-key')).toHaveValue('');
+  await page.locator('#analysis-delete-key').click();await expect(page.locator('#analysis-key-state')).toContainText('미등록');
+  expect((await (await page.request.get('/analysis/job.json')).json()).state).toBe('idle');
+});
+
+test('selected-session analysis requires consent and updates only after an isolated fake worker completes',async({page},testInfo)=>{
+  let starts=0;page.on('request',request=>{if(request.url().endsWith('/analysis/start.json'))starts++;});
+  await page.goto('/?view=graph');const frame=page.frameLocator('#live-frame');
+  const raw='22222222-2222-4222-8222-222222222222';
+  await frame.locator(`#mind-sessions [data-key="${raw}"]`).click();await frame.locator('#explorer-analyze').click();
+  await expect(page.locator('#analysis-session-id')).toHaveText(raw);
+  await expect(page.locator('#analysis-start')).toBeDisabled();
+  await expect(page.locator('#analysis-blocked')).toContainText('로그인 상태');
+  await page.locator('#analysis-open-setup').click();await page.locator('#analysis-check-codex').click();
+  await expect(page.locator('#analysis-codex-state')).toContainText('로그인 확인됨');
+  await page.locator('#analysis-settings-close').click();await expect(page.locator('#analysis-scope')).toContainText('24개');
+  await expect(page.locator('#analysis-start')).toBeDisabled();
+  await page.locator('#analysis-consent').check();await expect(page.locator('#analysis-start')).toBeEnabled();
+  await page.screenshot({path:testInfo.outputPath('verified-analysis-dialog.png')});
+  await page.locator('#analysis-start').click();await expect(page.locator('#analysis-start')).toBeDisabled();
+  await expect(page.locator('#analysis-progress')).toContainText('완료',{timeout:20000});
+  expect(starts).toBe(1);
+  await page.locator('#analysis-run-close').click();
+  await expect(frame.locator('#mind-sessions [aria-pressed="true"]')).toHaveAttribute('data-key',raw);
+  await expect(frame.locator('#mind-topics')).toContainText('Synthetic generated topic',{timeout:15000});
+  await frame.locator('#explorer-analyze').click();
+  await expect(page.locator('#analysis-mode')).toHaveValue('decisions');
+  await page.locator('#analysis-mode').selectOption('codex');
+  await expect(page.locator('#analysis-blocked')).toContainText('이미 분석된 세션');
+  await expect(page.locator('#analysis-start')).toBeDisabled();
+});

@@ -19,3 +19,4 @@ playwright-report/
 .e2e-data/
 *.jsonl.zst
 *.zip
+*.analysis-control/

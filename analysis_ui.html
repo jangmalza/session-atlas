@@ -1,0 +1,19 @@
+<div id="analysis-actions"><button id="analysis-settings-open" type="button">분석 설정</button><button id="analysis-job-open" type="button" hidden>분석 작업 확인</button><span id="analysis-job-badge" role="status"></span></div>
+<dialog id="analysis-settings" aria-labelledby="analysis-settings-title">
+  <div class="analysis-dialog-head"><h2 id="analysis-settings-title">분석 설정</h2><button type="button" id="analysis-settings-close">닫기</button></div>
+  <p>자동 수집은 계속됩니다. 설정을 저장해도 분석은 실행되지 않습니다.</p>
+  <section><h3>Codex 의미 분석</h3><p id="analysis-codex-state"></p><button id="analysis-check-codex" type="button">Codex 로그인 상태 확인</button><p class="analysis-note">이 PC의 Codex CLI 인증을 사용합니다. 로그인이 필요하면 PC 터미널에서 <code>codex login</code>을 실행하세요.</p>
+  <label for="analysis-cm-root">Conversation Map 설치 폴더</label><input id="analysis-cm-root" type="text" maxlength="2048" autocomplete="off" placeholder="C:\…\conversation-map"><button id="analysis-save-path" type="button">폴더 설정 저장</button><p id="analysis-cm-state"></p></section>
+  <section><h3>Decisions 주제 배정</h3><p id="analysis-key-state"></p><label for="analysis-api-key">새 API 키 · 기존 키는 표시하지 않습니다</label><input id="analysis-api-key" type="password" maxlength="2048" autocomplete="new-password" spellcheck="false"><div class="analysis-button-row"><button id="analysis-save-key" type="button">키 등록·변경</button><button id="analysis-delete-key" type="button">등록 키 삭제</button></div><p class="analysis-note">등록 키는 이 서버 PC의 Windows 자격 증명 관리자에 저장합니다. 브라우저·DB·백업에는 저장하지 않습니다. 등록 여부만 확인하며 실제 API 유효성 검사는 호출하지 않습니다. 서버 환경변수로 설정한 키는 이 화면에서 삭제할 수 없습니다.</p></section>
+  <p id="analysis-settings-feedback" role="status"></p>
+</dialog>
+<dialog id="analysis-run" aria-labelledby="analysis-run-title">
+  <div class="analysis-dialog-head"><h2 id="analysis-run-title">선택한 세션 분석</h2><button type="button" id="analysis-run-close">닫기</button></div>
+  <strong id="analysis-session-title"></strong><p id="analysis-session-id" class="analysis-note"></p>
+  <label for="analysis-mode">실행할 작업</label><select id="analysis-mode"><option value="codex">Codex 의미 분석</option><option value="hybrid">Codex 분석 + Decisions 주제 배정</option><option value="decisions">기존 분석의 주제 배정만 · Decisions</option></select>
+  <p id="analysis-scope" role="status"></p><p id="analysis-transfer"></p><p id="analysis-preserve">실행 전 백업을 만들고 검증에 성공한 결과만 반영합니다. 기존 분석 제목·원문·근거·ID·관계는 유지합니다. 이미 분석된 세션의 새 메시지 재분석은 이 버튼에서 실행하지 않습니다.</p>
+  <p id="analysis-blocked" role="status"></p><button id="analysis-open-setup" type="button">분석 설정 열기</button>
+  <label class="analysis-consent"><input id="analysis-consent" type="checkbox">선택한 작업의 전송 범위를 확인했으며 모델·API 사용에 동의합니다.</label>
+  <div class="analysis-button-row"><button id="analysis-start" type="button" disabled>선택한 작업 실행</button><button id="analysis-preview-refresh" type="button">대상 다시 확인</button></div>
+  <p id="analysis-progress" role="status"></p><p class="analysis-note">창을 닫아도 실행 중인 작업은 계속됩니다. 실패 시 자동 재시도하지 않습니다.</p>
+</dialog>

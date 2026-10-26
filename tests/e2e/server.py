@@ -1,10 +1,44 @@
 """Synthetic-only E2E server. No production database, credentials or model calls."""
 from pathlib import Path
 import json,sys,tempfile,time
+import threading,os
+from types import SimpleNamespace
 sys.path.insert(0,str(Path(__file__).resolve().parents[2]))
 import context_graph as cg
 from live_dashboard import LiveDashboard
 from source_adapters import scan_claude
+from analysis_control import AnalysisControl,write_json
+
+class FakeCredentials:
+    supported=True
+    def __init__(self):self.key=None
+    def read(self,*,presence_only=False):return bool(self.key) if presence_only else self.key
+    def write(self,key):self.key=key
+    def delete(self):self.key=None
+
+class FixtureControl(AnalysisControl):
+    def settings(self):
+        return {**super().settings(),'codexInstalled':True,'nodeInstalled':True,'conversationMapReady':True}
+    def check_codex(self):
+        self.root.mkdir(parents=True,exist_ok=True)
+        write_json(self.root/'codex-status.json',{'status':'ready','at':time.time()})
+        return self.settings()
+
+def fake_analyzer(con,sid,root,out,*,progress):
+    time.sleep(1);progress('validating');time.sleep(1)
+    rows=cg.effective_messages(con,sid)
+    value={'title':'Synthetic analysed conversation','nodes':[
+        {'id':'root','kind':'root','title':'Synthetic analysed conversation','childIds':['topic']},
+        {'id':'topic','kind':'topic','title':'Synthetic generated topic','parentId':'root','childIds':['q']},
+        {'id':'q','kind':'item','parentId':'topic','title':'Synthetic analysed question','classification':'open_question','status':'open',
+         'evidence':[{'messageId':'m1','index':0,'speaker':'user','quote':rows[0]['content'],'verified':True}]}],
+        'relations':[],'source':{'messageCount':len(rows)},'messages':[{'id':f'm{i+1}','index':i,'speaker':r['role'],'text':r['content'],'timestamp':r['at']} for i,r in enumerate(rows)]}
+    cg._save_map(con,sid,value,cg.digest(cg.serialize_transcript(cg.transcript(con,sid))))
+    con.execute('INSERT INTO analyses VALUES (?,?,?,?,?)',(sid,'synthetic','ok',cg.now(),'synthetic'));con.commit()
+
+def fake_launch(controller,job_id):
+    threading.Thread(target=lambda:controller.execute(job_id,analyzer=fake_analyzer,classifier=lambda *_:None),daemon=True).start()
+    return SimpleNamespace(pid=os.getpid())
 
 def forbidden(*args,**kwargs):raise AssertionError('Models and classification APIs are forbidden in E2E')
 cg.auto_analyze=forbidden;cg.assign_topics=forbidden
@@ -44,6 +78,7 @@ with tempfile.TemporaryDirectory(prefix='session-atlas-e2e-') as directory:
     fixture_map=root/'map.json';fixture_map.write_text(json.dumps(value),encoding='utf-8')
     cg.import_map(con,SID,fixture_map,cg.digest(cg.serialize_transcript(cg.transcript(con,SID))))
     dashboard=LiveDashboard(root/'live',root/'fixture.db',18765,codex_home=home)
+    dashboard.analysis=FixtureControl(root/'fixture.db',home,credentials=FakeCredentials(),launcher=fake_launch)
     cg.publish_dashboard(con,dashboard,read_only_viewer=True);dashboard.start()
     try:
         while True:

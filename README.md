@@ -66,6 +66,16 @@ E2E tests launch a separate Chromium, synthetic SQLite database and local Python
 
 ## Automatic semantic analysis (opt-in)
 
+The live viewer now has **분석 설정** in its header and **이 세션 분석** after selecting a session in the mind map or Q&A view. Opening either dialog, saving settings, collecting new messages and refreshing pages never start model work.
+
+1. Open **분석 설정**. Check the installed Codex CLI's local authentication status and set the Conversation Map checkout folder. The check runs only [`codex login status`](https://learn.chatgpt.com/docs/cli/reference); its output is discarded. Sign in with `codex login` in the server PC's terminal if needed.
+2. For Decisions classification, register a key in that dialog. On Windows it is stored as a database-scoped generic credential in the current user's [Windows credential set](https://learn.microsoft.com/en-us/windows/win32/api/wincred/nf-wincred-credwritew). Keys are never returned to the browser or written to app files, browser storage, databases, backups or logs. Registration checks format only and does not call the API. Non-Windows hosts use `OPENAI_API_KEY`; web key storage is disabled there. Deleting a registered Windows key leaves a separately configured environment key intact and visibly identifies that remaining source.
+3. Select a session, choose **이 세션 분석**, review the selected session, message count and transmission scope, then explicitly consent and run the selected operation. Codex-only, Codex followed by Decisions, and Decisions-only classification of an existing map are separate choices. Existing maps cannot be regenerated from this UI; their original nodes, quotes, IDs and relations stay intact. Newly appended messages in already analysed sessions remain awaiting analysis.
+
+One background job runs per database, shared across local and Tailscale viewers. Progress shows backup, analysis/chunks, evidence validation, result building, topic classification and completion/failure. Closing the dialog or restarting a viewer does not restart the job. Failed/interrupted jobs require a new explicit request. Existing chunk/classification caches are reused; provider output and exceptions are not exposed. A job creates a verified private backup in `<database-stem>.analysis-control/<job-id>/before.zip`, works on a staging copy, and adopts only the selected session's validated result in a transaction. If that session's source/map/assignments change after confirmation, the result is not published. Display-name settings and unrelated sessions are never overwritten. A committed job receipt prevents a lost progress-file update from presenting a successful DB commit as a failure.
+
+The same exact Host, Tailscale identity, same-origin JSON and action-header protections used for display edits protect these controls. The API key is used only in the analysis worker; a stored Decisions key is not passed to Codex. The existing CLI remains available below. Actual authenticated model/API runs are separate from the mocked browser and worker regression tests.
+
 Requires Node.js 18+, installed/authenticated Codex CLI, and a local checkout of Conversation Map:
 
 ```powershell
@@ -79,7 +89,7 @@ python .\context_graph.py graph --html .\output\graph.html
 
 ## Codex topics + Decisions assignment (explicit opt-in)
 
-The hybrid mode uses Codex to create topic candidates, descriptions, items and evidence, then calls the [OpenAI Decisions API](https://developers.openai.com/api/docs/guides/decisions) to assign those items to existing topic IDs. Existing `analyze` commands remain Codex-only unless `--topic-classifier decisions` is selected. Collection, watch, serve and opening HTML never call either model.
+The hybrid mode uses Codex to create topic candidates, descriptions, items and evidence, then calls the [OpenAI Decisions API](https://developers.openai.com/api/docs/guides/decisions) to assign those items to existing topic IDs. Existing `analyze` commands remain Codex-only unless `--topic-classifier decisions` is selected. Collection, automatic refresh and opening HTML never call either model. The live viewer starts a separate analysis worker only after the explicit confirmation described above.
 
 Set `OPENAI_API_KEY` through your environment/secret manager before requesting classification. Keep it out of command arguments, browser code, logs and Git. The implementation uses Python's standard library and the fixed `https://api.openai.com/v1/decisions` endpoint with `gpt-6-luna`; it does not install an SDK or read credentials during collection/viewing.
 
@@ -261,7 +271,7 @@ python .\context_graph.py watch --interval 10 --live-dir "$HOME\.codex-context-g
 Start-Process "http://127.0.0.1:8765/"
 ```
 
-`watch` never calls a model. The old `watch --analyze` flags are rejected. Run `analyze --allow-model` separately only when you explicitly want semantic analysis.
+The `watch` collection loop never calls a model. The old `watch --analyze` flags are rejected. Request analysis separately with `analyze --allow-model` or the live viewer's selected-session confirmation.
 
 New messages are deduplicated into SQLite and counted as awaiting analysis. The live page polls aggregate collection status; incoming raw messages do not reload or alter the displayed analysis. Explicitly imported/analyzed results update the graph, preserving existing projection IDs through source-node provenance. Refreshes use atomic file replacement and leave collected messages, stored maps, source quotes, and analysis caches alone.
 
@@ -296,7 +306,7 @@ Existing decisions, questions, actions and other analysis items appear beside th
 
 Use **정리된 내용** to browse all saved analysis items in a session, including items outside the current message page. Filter cards by decisions, questions, actions, proposals or other classifications. Cards show titles, summary previews and source-message positions; the inspector shows the complete saved details and evidence. Category colours supplement the text labels. The inspector opens when an item is selected and can be closed to widen the conversation. **글자 크기** offers 17/19/21px reading sizes, and the session list can be hidden for more reading space. The font preference is stored locally in the browser; these display settings do not change source or analysis data.
 
-New messages update automatically, but new interpretations are produced only by an explicit `analyze --allow-model` request. Imported analyses update the timeline as well, including changes to rationales that do not alter graph geometry. A transcript/prefix hash establishes the saved analysis range; otherwise the range is marked uncertain. These views do not write to the database or rewrite any saved analysis, source text, evidence, IDs or relationships.
+New messages update automatically; new interpretations require an explicit CLI or selected-session analysis request. Imported analyses update the timeline as well, including changes to rationales that do not alter graph geometry. A transcript/prefix hash establishes the saved analysis range; otherwise the range is marked uncertain. Browsing does not write to the database or rewrite saved analysis, source text, evidence, IDs or relationships.
 
 The timeline serves the selected session's original text on demand through loopback-only, read-only JSON endpoints. Original conversation text is never embedded in `status.json` or request logs. The page requires the running local server; the existing graph and Conversation Map snapshots remain available offline.
 

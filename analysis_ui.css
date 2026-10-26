@@ -1,0 +1,18 @@
+#analysis-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+#analysis-job-badge{font-size:12px}
+#analysis-settings,#analysis-run{box-sizing:border-box;width:min(650px,94vw);max-height:90vh;overflow:auto;padding:24px;border:1px solid var(--border,#bbb);background:var(--bg,#fafaf7);color:var(--ink,#222)}
+#analysis-settings::backdrop,#analysis-run::backdrop{background:#0008}
+.analysis-dialog-head{display:flex;justify-content:space-between;gap:16px;align-items:center}
+.analysis-dialog-head h2{margin:0;font-size:21px}
+#analysis-settings section{border-top:1px solid var(--border,#bbb);margin-top:20px;padding-top:8px}
+#analysis-settings label,#analysis-run label{display:block;margin:12px 0 6px}
+#analysis-settings input,#analysis-mode{box-sizing:border-box;width:100%;padding:10px;margin:4px 0 10px;font:inherit;color:inherit;background:transparent;border:1px solid var(--border,#aaa)}
+.analysis-button-row{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+.analysis-note,#analysis-preserve{font-size:12px;line-height:1.7;opacity:.85;overflow-wrap:anywhere}
+#analysis-session-title{display:block;margin-top:20px;overflow-wrap:anywhere}
+.analysis-consent{line-height:1.7;font-size:13px}
+.analysis-consent input{margin-right:8px}
+#analysis-blocked,#analysis-settings-feedback{line-height:1.6;color:var(--accent,#2244cc)}
+#analysis-start{font-weight:700;background:var(--accent,#2444cc);color:#fff;padding:11px 16px;border:1px solid transparent}
+#analysis-start:disabled{opacity:.4;cursor:not-allowed}
+@media(max-width:600px){#analysis-settings,#analysis-run{padding:16px}#analysis-actions{width:100%}}

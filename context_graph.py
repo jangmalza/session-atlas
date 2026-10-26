@@ -851,7 +851,7 @@ def check_with_attribution_repair(script: Path, transcript_path: Path, draft_pat
 
 def auto_analyze(con: sqlite3.Connection, sid: str, root: Path, out: Path, force: bool = False, max_chars: int = 60000,
                  *, topic_classifier: str = "codex", allow_api: bool = False,
-                 topic_confidence: float = 0.85) -> str:
+                 topic_confidence: float = 0.85, progress=None) -> str:
     if topic_classifier not in ("codex", "decisions"):
         raise ValueError("Unknown topic classifier.")
     if topic_classifier == "decisions":
@@ -894,6 +894,8 @@ def auto_analyze(con: sqlite3.Connection, sid: str, root: Path, out: Path, force
         trans_path.write_text(content, encoding='utf-8')
         draft_paths: list[Path] = []
         for i, chunk in enumerate(chunks, start=1):
+            if progress:
+                progress('analyzing', chunk=i, chunks=len(chunks))
             draft_path = tmpdir / f'analysis-{i}.json'
             chunk_content = serialize_transcript(chunk)
             cache_path = cache_root / (f"{i}-{digest(cache_version + chunk_content)[:32]}.json")
@@ -962,9 +964,13 @@ def auto_analyze(con: sqlite3.Connection, sid: str, root: Path, out: Path, force
 
         # Validate all drafts against the COMPLETE transcript so message ids and
         # literal evidence quotes have one canonical reference source.
+        if progress:
+            progress('validating')
         repaired = check_with_attribution_repair(script, trans_path, draft_paths)
         if repaired:
             print(f'Conversation Map check: {repaired} speaker attribution(s) repaired using verified evidence', flush=True)
+        if progress:
+            progress('building')
         build = _run_analysis_process(['node', str(script), 'build', str(trans_path), *map(str, draft_paths),
                                        '--out-dir', str(result_dir), '--name', 'map'],
                                       stage="Conversation Map build", text=True, encoding="utf-8",
