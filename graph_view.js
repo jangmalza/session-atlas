@@ -289,7 +289,7 @@ if(typeof document !== "undefined") (() => {
   let catalogKind="primary",catalogParent="";
   try {const scope=JSON.parse(sessionStorage.getItem("context-graph-session-scope") || "{}");if(["primary","subagent","unknown"].includes(scope.kind)) {catalogKind=scope.kind;catalogParent=typeof scope.parent==="string"?scope.parent:"";}} catch (_) {}
   let restoredMindFilters=null;
-  let mindDrawFrame=0;
+  let mindDrawFrame=0,mindReveal=null;
   let sourcePanelWasOpen=false;
   const mindHosts=["mind-sessions","mind-topics","mind-questions","mind-answers"];
   const mindMotionQuery=window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -820,15 +820,23 @@ if(typeof document !== "undefined") (() => {
     for(const element of byId("mind-canvas").querySelectorAll(".mind-node-reveal,.mind-edge-reveal")) {
       element.classList.remove("mind-node-reveal","mind-edge-reveal");element.style.removeProperty("--mind-delay");
     }
+    mindReveal=null;
     scheduleMindDraw();
   }
   function scheduleMindDraw(animateColumn=null) {
     cancelAnimationFrame(mindDrawFrame);
-    mindDrawFrame=requestAnimationFrame(()=>{mindDrawFrame=0;drawMindLinks(animateColumn);});
+    // A requested reveal is remembered rather than tied to one frame: list scrolls, detail toggles
+    // and data arrival reschedule the draw before that frame runs, and would otherwise drop it.
+    if(Number.isInteger(animateColumn))mindReveal={column:animateColumn,at:Date.now(),startedAt:null};
+    mindDrawFrame=requestAnimationFrame(()=>{mindDrawFrame=0;drawMindLinks();});
   }
-  function drawMindLinks(animateColumn=null) {
+  function drawMindLinks() {
     if(mode!=="mind")return;
     const reduced=mindMotionQuery.matches || mindMotionControl.checked;
+    // A reveal waits up to 3s for its column to get nodes (session data may still be loading), then lives 1s.
+    if(mindReveal && (reduced || Date.now()-(mindReveal.startedAt ?? mindReveal.at)>(mindReveal.startedAt?1000:3000)))mindReveal=null;
+    // Redraws during a live reveal re-apply it with a negative delay so the animation continues in place.
+    const reveal=mindReveal,elapsed=reveal?.startedAt?Date.now()-reveal.startedAt:0;
     const canvas=byId("mind-canvas"),svg=byId("mind-links");svg.replaceChildren();
     if(mindSessionListOpen || !mindSession)return;
     svg.setAttribute("viewBox",`0 0 ${canvas.clientWidth} ${canvas.clientHeight}`);
@@ -842,14 +850,17 @@ if(typeof document !== "undefined") (() => {
         const line=`M ${x1} ${y1} C ${mid} ${y1},${mid} ${y2},${x2} ${y2}`;
         const focused=to.getAttribute("aria-pressed")==="true" || column===3 && byId(toId).querySelectorAll('.mind-node[aria-pressed="true"]').length===0;
         const path=svgEl("path",{d:line,class:"mind-edge"+(focused?" mind-edge-active":"")+(evidence?" mind-evidence-edge":""),pathLength:1,"data-column":column});
-        if(!reduced && column===animateColumn && !evidence) {path.classList.add("mind-edge-reveal");path.style.setProperty("--mind-delay",`${index*38}ms`);}
+        if(reveal && column===reveal.column && !evidence) {path.classList.add("mind-edge-reveal");path.style.setProperty("--mind-delay",`${index*38-elapsed}ms`);}
         svg.append(path);
       }
     }
-    if(!reduced && Number.isInteger(animateColumn)) {
-      for(const [index,node] of [...byId(mindHosts[animateColumn]).querySelectorAll(".mind-node")].entries()) {
-        node.style.setProperty("--mind-delay",`${130+index*38}ms`);node.classList.add("mind-node-reveal");
+    if(reveal) {
+      const nodes=[...byId(mindHosts[reveal.column]).querySelectorAll(".mind-node")];
+      for(const [index,node] of nodes.entries()) {
+        if(node.classList.contains("mind-node-reveal"))continue;
+        node.style.setProperty("--mind-delay",`${130+index*38-elapsed}ms`);node.classList.add("mind-node-reveal");
       }
+      if(reveal.startedAt===null && nodes.length)reveal.startedAt=Date.now();
     }
   }
   function renderMind(animateColumn=null,catalogOnly=false) {
