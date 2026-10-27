@@ -109,7 +109,7 @@ function fixture() {
   }
   const context = {session, analysis: {structure, anchors, relations: []}, messages};
   const graph = {nodes, edges: [], projects: ['test'], sessionCount: 1};
-  const selection = {session: sessionId, topic: 'topic:topic-12', question: JSON.stringify([sessionId, 'source-q12', 'q12']), pages: [4, 0, 1, 0], filters: {query: '', project: ''}};
+  const selection = {session: sessionId, topic: 'topic:topic-12', question: JSON.stringify([sessionId, 'source-q12', 'q12']), page: 4, filters: {query: '', project: ''}};
   return {sessions, sessionId, context, graph, selection};
 }
 
@@ -362,7 +362,7 @@ test('pager-only changes persist across source navigation and a new browser scri
   app.nodes('topic').find(card => card.dataset.key === data.selection.topic).click();
   assert.equal(app.nodes('question').length, 16, 'the open topic shows all of its questions');
   app.nodes('question').find(card => card.dataset.key === data.selection.question).click();
-  const expected = {...data.selection, pages: [4, 0, 0, 0]};
+  const expected = {...data.selection};
   assert.deepEqual(app.state(), expected);
   app.elements.get('mind-actions').querySelector('.source-open').click(); await settle();
   assert.equal(app.elements.get('source-reader-body').querySelector('.reader-target').dataset.messageId,'m12');
@@ -444,7 +444,7 @@ test('pagehide stops catalog polling for a discarded viewer', async () => {
 test('an unanalyzed session on page five restores after context loading finishes before its catalog', async () => {
   const data = fixture(), pending = deferred();
   data.sessions = Array.from({length: 80}, (_, index) => ({id: `session-${index}`, title: `Synthetic session ${index}`, project: 'test', hasAnalysis: index === 36}));
-  const selection = {session: 'session-33', topic: null, question: '', pages: [4, 0, 0, 0], filters: {query: '', project: ''}};
+  const selection = {session: 'session-33', topic: null, question: '', page: 4, filters: {query: '', project: ''}};
   const storage = new Map([[stateKey, JSON.stringify(selection)]]);
   const app = browser({data, storage, catalog: () => pending.promise}); await settle();
   assert.deepEqual(app.state(), selection);
@@ -464,7 +464,7 @@ test('an unanalyzed session on page five restores after context loading finishes
 test('project and text filters restore the same page even when the project exists only in the live catalog', async () => {
   const data = fixture(), pending = deferred();
   data.sessions = data.sessions.map((session, index) => ({...session, hasAnalysis: index === 36, project: index < 16 ? 'live-only' : 'test', title: index < 16 ? `Matched ${index}` : session.title}));
-  const selection = {session: 'session-10', topic: null, question: '', pages: [1, 0, 0, 0], filters: {query: 'Matched', project: 'live-only'}};
+  const selection = {session: 'session-10', topic: null, question: '', page: 1, filters: {query: 'Matched', project: 'live-only'}};
   const storage = new Map([[stateKey, JSON.stringify(selection)]]);
   const app = browser({data, storage, catalog: () => pending.promise}); await settle();
   assert.equal(app.elements.get('project').value, 'live-only');
@@ -571,7 +571,7 @@ test('a refreshed descriptive session title preserves the selected branch and re
   app.elements.get('query').dispatchEvent({type: 'input'});
   assert.match(app.elements.get('info').textContent, /1개/);
   assert.equal(app.selected('session').dataset.key, data.sessionId);
-  assert.match(app.elements.get('query').placeholder, /첫 요청/);
+  assert.match(app.elements.get('query').placeholder, /가지 검색/);
 });
 
 const scopeKey = 'context-graph-session-scope';
@@ -677,7 +677,7 @@ test('live topic recovery labels user evidence and opens the stored original wit
 });
 
 test('offline user-evidence order keeps the reference but disables original navigation',async()=>{
-  const data=topicUserEvidenceFixture();data.selection.pages[0]=0;
+  const data=topicUserEvidenceFixture();data.selection.page=0;
   const app=browser({data,protocol:'file:',storage:new Map([[stateKey,JSON.stringify({...data.selection,topic:'topic:topic-0',question:''})]])});await settle();
   assert.match(app.selected('topic').title,/사용자 근거 원문 #31/);
   assert.equal(app.elements.get('mind-actions').querySelector('.topic-source-open').disabled,true);
@@ -782,7 +782,7 @@ test('pending or conflicting saves cannot duplicate requests or change local gro
 });
 
 test('offline snapshots offer no preference mutation even with saved edit metadata',async()=>{
-  const data=fixture();data.selection.pages[0]=0;
+  const data=fixture();data.selection.page=0;
   data.context.session.topicDisplay={status:'default',sourceMapSha256:'a'.repeat(64),revision:'0'.repeat(64)};
   const app=browser({data,protocol:'file:',storage:new Map([[stateKey,JSON.stringify(data.selection)]])});await settle();
   assert.equal(app.elements.get('mind-topic-edit').disabled,true);app.elements.get('mind-topic-edit').click();await settle();
@@ -900,12 +900,12 @@ test('an older catalogue response cannot undo an acknowledged session name',asyn
 test('renaming a session found by its old alias keeps it selected and retains original-title search',async()=>{
   const {data,sessions,context,edit}=sessionNameFixture();
   sessions[36].displayTitle='Old alias';context.session=clone(sessions[36]);
-  const selection={...data.selection,pages:[0,0,1,0],filters:{query:'Old alias',project:''}};
+  const selection={...data.selection,page:0,filters:{query:'Old alias',project:''}};
   const app=browser({data,storage:new Map([[stateKey,JSON.stringify(selection)]]),catalog:()=>({sessions}),messages:()=>context,sessionEdit:edit});await settle();
   app.elements.get('mind-session-name').value='New alias';app.elements.get('mind-session-name').dispatchEvent({type:'input'});
   app.elements.get('mind-session-name-save').click();await settle();
   assert.equal(app.state().session,data.sessionId);assert.equal(app.selected('question').dataset.nodeId,'q12');
-  assert.equal(app.elements.get('query').value,'');assert.equal(app.state().pages[0],4);
+  assert.equal(app.elements.get('query').value,'');assert.equal(app.state().page,4);
   app.elements.get('query').value=data.context.session.title;app.elements.get('query').dispatchEvent({type:'input'});
   assert.match(app.elements.get('info').textContent,/1개/);assert.equal(app.selected('session').querySelector('.name').textContent,'New alias');
 });
@@ -1005,7 +1005,7 @@ test('conflicting item edits and offline snapshots do not alter displayed titles
   app.elements.get('item-title-input').dispatchEvent({type:'input'});app.elements.get('item-title-save').click();await settle();
   assert.match(app.elements.get('item-title-status').textContent,/새로고침/);
   assert.equal(app.selected('question').querySelector('.name').textContent,'Question 12');
-  data.selection.pages[0]=0;
+  data.selection.page=0;
   const offline=browser({data,protocol:'file:',storage:new Map([[stateKey,JSON.stringify(data.selection)]])});await settle();
   offline.elements.get('mind-question-title-edit').click();assert.equal(offline.elements.get('item-title-save').disabled,true);
   offline.elements.get('item-title-save').click();await settle();assert.equal(offline.requests.length,0);
@@ -1028,7 +1028,6 @@ test('a merged graph node keeps display titles separate for each original questi
     context.analysis.anchors['source-alternate']=[{messageId:'m5',index:5,sourceMessageId:'alternate-message'}];
     context.analysis.itemLabels['source-alternate']={title:'Other original question'};
   }
-  data.selection.pages[2]=2;
   const before=clone(data),app=browser({data,storage:new Map([[stateKey,JSON.stringify(data.selection)]]),messages:()=>server,itemEdit});await settle();
   app.elements.get('mind-question-title-edit').click();app.elements.get('item-title-input').value='Only the selected occurrence';
   app.elements.get('item-title-input').dispatchEvent({type:'input'});app.elements.get('item-title-save').click();await settle();
@@ -1090,9 +1089,105 @@ test('branches connect each parent to its visible children and only a newly open
   assert.ok(app.nodes('question').every(node=>!node.classList.contains('mind-node-reveal')),'reduced motion skips the reveal');
 });
 
+test('a legacy page array restores as the session-list page',async()=>{
+  const data=fixture(),storage=new Map([[stateKey,JSON.stringify({...data.selection,page:undefined,pages:[3,0,0,0],sessionListOpen:true})]]);
+  const app=browser({data,storage});await settle();
+  assert.match(app.elements.get('mind-sessions').textContent,/25–32 \/ 48/);
+  app.window.dispatchEvent({type:'pagehide'});
+  assert.equal(app.state().page,3);assert.equal(app.state().pages,undefined,'the saved shape moves to the single page number');
+});
+
+const cameraOf=app=>{const match=app.elements.get('mind-tree').style.transform.match(/translate\((-?[\d.]+)px,(-?[\d.]+)px\) scale\(([\d.]+)\)/);return match && {x:Number(match[1]),y:Number(match[2]),k:Number(match[3])};};
+
+test('a session opens fitted around its root; branches pan the camera and the buttons change only the scale',async()=>{
+  const data=fixture(),app=browser({data,storage:new Map([[stateKey,JSON.stringify(data.selection)]])});await settle();
+  const first=cameraOf(app);assert.ok(first,'the tree carries a transform');
+  assert.ok(first.k>0 && first.k<=1);assert.match(app.elements.get('mind-zoom-level').textContent,/^\d+%$/);
+  app.nodes('topic').find(node=>node.dataset.key==='topic:topic-3').click();
+  const opened=cameraOf(app);assert.equal(opened.k,first.k,'opening a branch pans without rescaling');
+  app.elements.get('mind-zoom-in').click();assert.ok(cameraOf(app).k>opened.k);
+  app.elements.get('mind-zoom-out').click();assert.ok(Math.abs(cameraOf(app).k-opened.k)<1e-9);
+  app.elements.get('mind-zoom-reset').click();assert.equal(cameraOf(app).k,1);
+  app.elements.get('mind-fit').click();assert.ok(cameraOf(app).k<1,'the whole tree is taller than the box, so fitting shrinks it');
+  assert.equal(app.elements.get('mind-zoom-level').textContent,Math.round(cameraOf(app).k*100)+'%');
+  const before=cameraOf(app);app.openList();app.sessions().find(card=>card.dataset.key==='session-37').click();
+  assert.notDeepEqual(cameraOf(app),before,'another session is fitted afresh');
+  assert.equal(app.state().session,'session-37');
+});
+
+test('dragging and wheel gestures move or scale the tree without touching the saved selection',async()=>{
+  const data=fixture(),app=browser({data,storage:new Map([[stateKey,JSON.stringify(data.selection)]])});await settle();
+  const host=app.elements.get('mind-tree-host'),start=cameraOf(app);
+  host.dispatchEvent({type:'pointerdown',pointerId:1,button:0,clientX:100,clientY:100});
+  host.dispatchEvent({type:'pointermove',pointerId:1,clientX:160,clientY:130});
+  assert.equal(host.classList.contains('mind-dragging'),true);
+  host.dispatchEvent({type:'pointerup',pointerId:1,clientX:160,clientY:130});
+  const moved=cameraOf(app);
+  assert.equal(moved.x-start.x,60);assert.equal(moved.y-start.y,30);assert.equal(moved.k,start.k);
+  assert.equal(host.classList.contains('mind-dragging'),false);
+  host.dispatchEvent({type:'wheel',deltaX:0,deltaY:-100,ctrlKey:true,clientX:120,clientY:80,preventDefault(){}});
+  assert.ok(cameraOf(app).k>moved.k,'ctrl+wheel zooms in');
+  const zoomed=cameraOf(app);
+  host.dispatchEvent({type:'wheel',deltaX:10,deltaY:20,ctrlKey:false,clientX:120,clientY:80,preventDefault(){}});
+  assert.equal(cameraOf(app).x,zoomed.x-10);assert.equal(cameraOf(app).y,zoomed.y-20);assert.equal(cameraOf(app).k,zoomed.k,'a plain wheel pans');
+  host.dispatchEvent({type:'pointerdown',pointerId:2,button:0,clientX:50,clientY:50});
+  host.dispatchEvent({type:'pointermove',pointerId:2,clientX:51,clientY:51});
+  host.dispatchEvent({type:'pointerup',pointerId:2,clientX:51,clientY:51});
+  assert.equal(host.classList.contains('mind-dragging'),false,'a tiny movement is a tap, not a drag');
+  const panned=cameraOf(app);host.scrollLeft=10;host.scrollTop=40;host.dispatchEvent({type:'scroll'});
+  assert.equal(host.scrollTop,0);assert.equal(host.scrollLeft,0);
+  assert.deepEqual(cameraOf(app),{x:panned.x-10,y:panned.y-40,k:panned.k},'a browser scroll of the clipped box becomes a camera move');
+  assert.deepEqual(app.state(),data.selection);
+});
+
+test('arrow keys walk the branches, open and fold them, and move the camera to the focused node',async()=>{
+  const data=fixture(),app=browser({data,storage:new Map([[stateKey,JSON.stringify({...data.selection,question:''})]])});await settle();
+  const tree=app.elements.get('mind-tree'),press=(key)=>tree.dispatchEvent({type:'keydown',key,target:app.document.activeElement,preventDefault(){}});
+  const focused=()=>app.document.activeElement.dataset;
+  app.selected('topic').focus();
+  press('ArrowRight');assert.equal(focused().kind,'question');assert.equal(focused().key,JSON.stringify([data.sessionId,'source-q0','q0']),'→ enters the open branch');
+  const before=cameraOf(app);press('ArrowDown');assert.equal(focused().key,JSON.stringify([data.sessionId,'source-q1','q1']));
+  press('End');assert.equal(focused().key,'topic:topic-17','End reaches the last visible branch');
+  assert.notDeepEqual(cameraOf(app),before,'the camera follows the focused row');
+  press('ArrowUp');assert.equal(focused().key,'topic:topic-16');
+  press('Home');assert.equal(focused().kind,'session');
+  press('ArrowRight');assert.equal(focused().key,'topic:topic-12','→ on the root enters its first branch');
+  press('ArrowRight');assert.equal(focused().key,JSON.stringify([data.sessionId,'source-q0','q0']));
+  press('ArrowLeft');assert.equal(focused().key,'topic:topic-12','← steps back to the parent');
+  press('ArrowLeft');assert.equal(app.nodes('question').length,0,'← on an open branch folds it');
+  assert.equal(app.state().topic,null);assert.equal(focused().key,'topic:topic-12','focus stays on the folded branch');
+  press('ArrowDown');assert.equal(focused().key,'topic:topic-0');
+  press('ArrowRight');assert.equal(app.state().topic,'topic:topic-0','→ on a folded branch opens it');
+  assert.equal(focused().key,'topic:topic-0');
+  press('ArrowUp');assert.equal(focused().key,'topic:topic-12');
+  press('Home');assert.equal(focused().kind,'session');
+  press('ArrowLeft');assert.equal(focused().kind,'session','the root has no parent to step to');
+  assert.equal(app.requests.filter(url=>url.startsWith('timeline/context.json')).length,1,'keyboard walking fetches nothing new');
+});
+
+test('the search box lights matching branches of the open session instead of hiding it',async()=>{
+  const data=fixture(),app=browser({data,storage:new Map([[stateKey,JSON.stringify(data.selection)]])});await settle();
+  app.elements.get('query').value='Question 1';app.elements.get('query').dispatchEvent({type:'input'});
+  assert.equal(app.state().session,data.sessionId,'the open session stays selected');
+  assert.equal(app.elements.get('mind-tree').classList.contains('searching'),true);
+  const hits=app.nodes('question').filter(node=>node.classList.contains('mind-hit')).map(node=>node.querySelector('.name').textContent);
+  assert.deepEqual(hits,['Question 1','Question 10','Question 11','Question 12','Question 13','Question 14','Question 15']);
+  assert.equal(app.nodes('topic').filter(node=>node.classList.contains('mind-hit')).length,0,'topic labels themselves do not match');
+  assert.match(app.elements.get('mind-selection').textContent,/맞는 가지 7개/);
+  app.nodes('topic').find(node=>node.dataset.key==='topic:topic-12').click();
+  const folded=app.nodes('topic').find(node=>node.dataset.key==='topic:topic-12');
+  assert.equal(folded.querySelector('.tree-hits').textContent,'검색 7','a folded branch counts the matches inside it');
+  assert.equal(folded.classList.contains('mind-hit'),true);
+  assert.match(app.elements.get('info').textContent,/0개/,'the session list is still narrowed by the term');
+  app.openList();assert.equal(app.sessions().length,0);
+  app.elements.get('reset').click();
+  assert.equal(app.elements.get('mind-tree').classList.contains('searching'),false);
+  assert.equal(app.state().session,data.sessionId);
+});
+
 test('offline answer evidence offers existing question details without raw quotation or network requests',async()=>{
   const data=answerEvidenceFixture();delete data.context.analysis.assistantEvidence['source-q12'][0].quotes;
-  data.selection.pages[0]=0;
+  data.selection.page=0;
   const storage=new Map([[stateKey,JSON.stringify(data.selection)]]),app=browser({data,storage,protocol:'file:'});await settle();
   const card=app.answers()[0];assert.ok(card);
   assert.equal(card.dataset.kind,'answer-evidence');

@@ -43,7 +43,7 @@ body.has-detail .layout{grid-template-columns:minmax(0,1fr)}
 #mind-selection strong{font-weight:600;max-width:42%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #mind-selection .breadcrumb-arrow{color:var(--accent)}
 .mind-selection-note{width:100%;font-size:11px;color:var(--muted)}
-.mind-viewport{padding:18px 0 20px;background-image:radial-gradient(var(--grid) .7px,transparent .7px);background-size:8px 8px;overflow:visible}
+.mind-viewport{padding:10px 0 16px;overflow:visible}
 #mind-canvas{scroll-margin-top:66px}
 .session-picker-heading{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px}
 .session-picker-heading h2{margin:0}

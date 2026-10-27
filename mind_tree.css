@@ -1,7 +1,18 @@
 /* Branching tree: one root at the left, labels resting on their lines, thin connectors. */
 #mind-canvas{position:relative;display:block;min-width:0}
-.mind-tree-host{position:relative;padding:14px 28px 26px 6px}
-#mind-tree{position:relative;min-width:0}
+.mind-tree-host{position:relative;height:clamp(320px,58vh,820px);overflow:hidden;border:1px solid var(--line);border-radius:8px;background:var(--panel) radial-gradient(var(--grid) .7px,transparent .7px);background-size:8px 8px;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none}
+.mind-tree-host.mind-dragging{cursor:grabbing}
+.mind-tree-host.mind-dragging #mind-tree,#mind-tree.mind-instant,.mind-motion-off #mind-tree{transition:none}
+body.has-source-reader .mind-tree-host{height:clamp(220px,34vh,520px)}
+#mind-tree{position:absolute;left:0;top:0;transform-origin:0 0;transition:transform .25s ease}
+.mind-zoom{display:flex;align-items:center;gap:3px}
+.mind-zoom button{font-size:12px;padding:5px 8px;min-width:28px}
+.mind-zoom span{font:11px/1 var(--mono);color:var(--muted);min-width:38px;text-align:center}
+#mind-tree.searching .mind-node:not(.mind-hit):not(.depth-0),#mind-tree.searching .mind-note{opacity:.38}
+#mind-tree .mind-node.mind-hit{color:var(--accent);border-color:var(--accent)}
+#mind-tree .mind-node.mind-hit .name{font-weight:700}
+#mind-tree .mind-node .tree-hits{flex:none;padding:0 6px;border-radius:9px;background:var(--accent);color:var(--on-accent);font:10px/18px var(--mono)}
+.mind-search-note{color:var(--accent)}
 #mind-tree .mind-node,#mind-tree .mind-note{position:absolute;box-sizing:border-box;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #mind-tree .mind-node{display:inline-flex;align-items:center;gap:7px;padding:3px 8px 4px;min-height:0;border:0;border-bottom:1.5px solid var(--muted);border-radius:0;background:transparent;color:var(--text);font-size:13px;line-height:1.4;text-align:left;cursor:pointer;box-shadow:none;opacity:1;transition:color .12s,border-color .12s,background-color .12s}
 #mind-tree .mind-node>*{min-width:0}
@@ -42,7 +53,10 @@
 #mind-session-notice button{margin:0;font-size:12px;padding:5px 9px}
 #mind-actions .answer-evidence-preview{display:block;margin:10px 0;padding-left:12px;border-left:2px solid var(--accent);white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.9;color:var(--text)}
 @media(max-width:700px){
- .mind-tree-host{padding:10px 14px 18px 2px}
+ .mind-tree-host{height:clamp(260px,46vh,520px)}
+ body.has-source-reader .mind-tree-host{height:clamp(180px,30vh,400px)}
+ .mind-zoom{gap:2px}
+ .mind-zoom span{display:none}
  #mind-tree .mind-node{font-size:12px;gap:5px;padding:3px 6px 4px}
  #mind-tree .mind-node .name{font-size:12px}
  .mind-tools{gap:5px 6px}

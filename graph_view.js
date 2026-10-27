@@ -270,7 +270,7 @@ if(typeof document !== "undefined") (() => {
   const qaFailedSessions=new Set();
   let qaCatalog=Object.entries(savedContext).map(([id,context])=>({id,...context.session}));
   let catalogReady=!liveCatalog,catalogTimer=0,catalogRequest=null,catalogStopped=false,catalogSignature="",catalogEpoch=0;
-  let mindSession="",mindTopic=null,mindQuestion="",mindAnswer="",mindPages=[0,0,0,0],mindTopicGroup="primary";
+  let mindSession="",mindTopic=null,mindQuestion="",mindAnswer="",mindPage=0,mindTopicGroup="primary";
   let topicDisplaySaving=false,topicDisplayResult=null;
   const topicNameDrafts=new Map();
   const sessionNameDrafts=new Map();
@@ -287,13 +287,16 @@ if(typeof document !== "undefined") (() => {
   let mindDrawFrame=0,mindReveal=null,mindPlan=null,mindAnswerSelection=null;
   // The line layer is kept by reference: clearing the tree must not drop it from the document.
   const mindLinks=byId("mind-links");
+  // Camera for the tree box: translate(x,y) scale(k). Fitted when a session opens, then moved by the reader.
+  let mindCamera={x:0,y:0,k:1},mindCameraSession="",mindTerm="",mindSearchHits=0;
+  const treeHostEl=byId("mind-tree-host"),treeEl=byId("mind-tree");
   let sourcePanelWasOpen=false;
   // Sessions without analysis branch into request groups keyed "raw:<group>"; they are never saved topics.
   const isRawTopic=value=>typeof value==="string" && value.startsWith("raw:");
   const mindMotionQuery=window.matchMedia("(prefers-reduced-motion: reduce)");
   const mindMotionControl=byId("mind-reduce-motion");
   try {mindMotionControl.checked=sessionStorage.getItem("context-graph-reduced-motion")==="true";} catch (_) {}
-  try {const state=JSON.parse(sessionStorage.getItem("context-graph-mind-selection") || "{}");mindSession=state.session || "";if(state.topicGroup==="auxiliary")mindTopicGroup="auxiliary";mindTopic=state.topic ?? null;mindQuestion=state.question || "";mindAnswer=typeof state.answer==="string"?state.answer:"";if(Array.isArray(state.pages) && state.pages.length===4 && state.pages.every(value=>Number.isInteger(value)&&value>=0))mindPages=state.pages;if(state.filters && typeof state.filters.query==="string" && typeof state.filters.project==="string")restoredMindFilters=state.filters;} catch (_) {}
+  try {const state=JSON.parse(sessionStorage.getItem("context-graph-mind-selection") || "{}");mindSession=state.session || "";if(state.topicGroup==="auxiliary")mindTopicGroup="auxiliary";mindTopic=state.topic ?? null;mindQuestion=state.question || "";mindAnswer=typeof state.answer==="string"?state.answer:"";if(Number.isInteger(state.page) && state.page>=0)mindPage=state.page;else if(Array.isArray(state.pages) && Number.isInteger(state.pages[0]) && state.pages[0]>=0)mindPage=state.pages[0];if(state.filters && typeof state.filters.query==="string" && typeof state.filters.project==="string")restoredMindFilters=state.filters;} catch (_) {}
   let mindSessionListOpen=!mindSession;
   try {const state=JSON.parse(sessionStorage.getItem("context-graph-mind-selection") || "{}");if(typeof state.sessionListOpen==="boolean")mindSessionListOpen=state.sessionListOpen;} catch (_) {}
   const qaTime = new Intl.DateTimeFormat("ko-KR",{dateStyle:"short",timeStyle:"short"});
@@ -430,7 +433,7 @@ if(typeof document !== "undefined") (() => {
           byId("query").value="";restoredMindFilters=null;
           const rows=scopedCatalog().slice().sort(recentSessions)
             .filter(value=>!byId("project").value || value.project===byId("project").value);
-          mindPages[0]=Math.max(0,Math.floor(rows.findIndex(value=>value.id===sid)/8));
+          mindPage=Math.max(0,Math.floor(rows.findIndex(value=>value.id===sid)/8));
         }
         rememberMind();
       }
@@ -646,7 +649,7 @@ if(typeof document !== "undefined") (() => {
   }
   function rememberMind() {
     rememberScope();
-    try {sessionStorage.setItem("context-graph-mind-selection",JSON.stringify({session:mindSession,topic:mindTopic,question:mindQuestion,...(mindAnswer?{answer:mindAnswer}:{}),pages:mindPages,...(mindSessionListOpen || !mindSession?{sessionListOpen:mindSessionListOpen}:{}),...(mindTopicGroup==="auxiliary"?{topicGroup:"auxiliary"}:{}),filters:{query:byId("query").value,project:byId("project").value}}));} catch (_) {}
+    try {sessionStorage.setItem("context-graph-mind-selection",JSON.stringify({session:mindSession,topic:mindTopic,question:mindQuestion,...(mindAnswer?{answer:mindAnswer}:{}),page:mindPage,...(mindSessionListOpen || !mindSession?{sessionListOpen:mindSessionListOpen}:{}),...(mindTopicGroup==="auxiliary"?{topicGroup:"auxiliary"}:{}),filters:{query:byId("query").value,project:byId("project").value}}));} catch (_) {}
   }
   function mindSessionCard(session,active,action) {
     const title=sessionTitle(session);
@@ -682,8 +685,8 @@ if(typeof document !== "undefined") (() => {
   function sessionPage(catalog,empty) {
     const host=byId("mind-sessions"),pageSize=8,previousList=host.querySelector(".mind-node-list");
     const owner=JSON.stringify([catalogKind,catalogParent,byId("query").value,byId("project").value]);
-    if(catalogReady) mindPages[0]=Math.min(mindPages[0],Math.max(0,Math.ceil(catalog.length/pageSize)-1));
-    const page=mindPages[0];
+    if(catalogReady) mindPage=Math.min(mindPage,Math.max(0,Math.ceil(catalog.length/pageSize)-1));
+    const page=mindPage;
     const keepScroll=previousList?.dataset.owner===owner && previousList.dataset.page===String(page) && previousList.querySelector(".mind-node");
     const scrollTop=keepScroll?previousList.scrollTop:0;
     host.replaceChildren();const list=el("div","","mind-node-list");
@@ -692,7 +695,7 @@ if(typeof document !== "undefined") (() => {
     if(!catalog.length) list.append(el("p",empty,"mind-empty"));
     list.scrollTop=scrollTop;
     if(catalog.length>pageSize) {
-      const paging=el("div","","paging"),previous=button("이전",()=>{mindPages[0]--;renderMind();rememberMind();}),next=button("다음",()=>{mindPages[0]++;renderMind();rememberMind();});
+      const paging=el("div","","paging"),previous=button("이전",()=>{mindPage--;renderMind();rememberMind();}),next=button("다음",()=>{mindPage++;renderMind();rememberMind();});
       previous.setAttribute("aria-label","이전 세션 노드");next.setAttribute("aria-label","다음 세션 노드");
       previous.disabled=page===0;next.disabled=(page+1)*pageSize>=catalog.length;
       paging.append(previous,el("span",`${page*pageSize+1}–${Math.min((page+1)*pageSize,catalog.length)} / ${catalog.length}`,"hint"),next);host.append(paging);
@@ -725,8 +728,14 @@ if(typeof document !== "undefined") (() => {
     if(spec.number)node.append(el("span",spec.number,"tree-no"));
     node.append(el("strong",spec.label,"name"));
     if(count && !spec.expanded)node.append(el("span",String(count),"tree-count"));
+    if(mindTerm) {
+      // A branch lights up when its own label matches; a folded branch also reports matches hidden inside it.
+      if(spec.kind!=="session" && String(spec.label).toLocaleLowerCase().includes(mindTerm)){node.classList.add("mind-hit");mindSearchHits++;}
+      if(spec.hits && !spec.expanded){node.classList.add("mind-hit");node.append(el("span",`검색 ${spec.hits}`,"tree-hits"));mindSearchHits+=spec.hits;}
+    }
     return node;
   }
+  const countHits=labels=>mindTerm?labels.filter(label=>String(label || "").toLocaleLowerCase().includes(mindTerm)).length:0;
   const compactTree=()=>(byId("mind-canvas").clientWidth || 0)<760;
   function renderTree(root) {
     const host=byId("mind-tree"),compact=compactTree();
@@ -736,6 +745,33 @@ if(typeof document !== "undefined") (() => {
     for(const entry of plan.nodes){entry.element=treeElement(entry);host.append(entry.element);}
     host.style.width=plan.width+"px";host.style.height=plan.height+"px";
     plan.compact=compact;mindPlan=plan;
+  }
+  const viewSize=()=>({width:treeHostEl.clientWidth || 800,height:treeHostEl.clientHeight || 520});
+  const treeSize=()=>({width:mindPlan?.width || 1,height:mindPlan?.height || 1});
+  function applyCamera(animate=true) {
+    treeEl.classList.toggle("mind-instant",!animate);
+    treeEl.style.transform=`translate(${Math.round(mindCamera.x)}px,${Math.round(mindCamera.y)}px) scale(${mindCamera.k})`;
+    byId("mind-zoom-level").textContent=`${Math.round(mindCamera.k*100)}%`;
+  }
+  function fitTree(options={}) {
+    if(!mindPlan)return;const rootEntry=mindPlan.nodes[0];
+    mindCamera=MindTree.fit(viewSize(),treeSize(),{min:.55,focusY:rootEntry.y+rootEntry.height/2,...options});applyCamera();
+  }
+  function revealEntries(entries,animate=true) {
+    if(!mindPlan || !entries.length)return;
+    mindCamera=MindTree.clamp(MindTree.reveal(mindCamera,viewSize(),MindTree.bounds(entries)),viewSize(),treeSize());applyCamera(animate);
+  }
+  // Shows a branch together with the children it just opened.
+  function revealKey(key) {
+    const parent=mindPlan?.nodes.find(entry=>entry.node.key===key);if(!parent)return;
+    const children=mindPlan.nodes.filter(entry=>entry.parent===parent),view=viewSize();
+    // On a narrow box the parent and its children cannot share the width; the opened children win.
+    const whole=MindTree.bounds([parent,...children]);
+    revealEntries(children.length && whole.width*mindCamera.k>view.width-48?children:[parent,...children]);
+  }
+  function zoomTree(factor,point=null) {
+    if(!mindPlan)return;const view=viewSize();
+    mindCamera=MindTree.clamp(MindTree.zoomAt(mindCamera,point || {x:view.width/2,y:view.height/2},factor),view,treeSize());applyCamera(point===null);
   }
   function syncMindMotion() {
     document.body.classList.toggle("mind-motion-off",mindMotionQuery.matches || mindMotionControl.checked);
@@ -806,6 +842,7 @@ if(typeof document !== "undefined") (() => {
     if(auxiliary) {
       const items=group?QuestionAnswers.itemsForTopic(data,group,topic.value):[];
       spec.count=items.length;
+      if(!open)spec.hits=countHits(items.map(item=>nodeTitle(nodes.get(item.nodeId),item.source)));
       if(open)spec.children=items.length?items.map(item=>{
         const node=nodes.get(item.nodeId),key=JSON.stringify([item.source.session_id,item.source.source_node,node.id]),name=nodeTitle(node,item.source);
         return {kind:"auxiliary-item",key,label:name,title:`${name}\n${label(node)} · 누르면 근거와 관계를 봅니다`,selected:selected===node.id,
@@ -813,6 +850,7 @@ if(typeof document !== "undefined") (() => {
       }):[note("저장된 보조 항목이 없습니다.","aux-empty")];
     } else {
       spec.count=topic.count;
+      if(!open)spec.hits=countHits(QuestionAnswers.mindBranch(group,topic.value,"",auxiliary?"auxiliary":"primary").questions.map(entry=>nodeTitle(nodes.get(entry.nodeId),entry.source)));
       if(open)spec.children=branch.questions.length?branch.questions.map((entry,index)=>questionNode(entry,`${number}.${index+1}`,branch)):[note("이 주제에 저장된 질문이 없습니다.","q-empty")];
     }
     return spec;
@@ -823,6 +861,7 @@ if(typeof document !== "undefined") (() => {
       title:`${name}\n${entry.anchor?"원문 #"+(entry.anchor.index+1):"순서 미확정"} · 답변 연결 ${entry.answers.length}개${entry.answerEvidence.length?" · 답변 근거 "+entry.answerEvidence.length+"개":""}`,
       data:{nodeId:entry.nodeId,sourceNode:entry.source.source_node},
       action:()=>{if(open){mindQuestion="";mindAnswer="";close();rememberMind();renderMind();}else selectMindQuestion(entry);}};
+    if(!open)spec.hits=countHits([...entry.answers.map(answer=>{const node=nodes.get(answer.nodeId);return nodeTitle(node,answer.source || resolveSource(node));}),...entry.answerEvidence.map(evidence=>evidenceTitle(entry,evidence))]);
     if(open) {
       spec.children=[...branch.answers.map(answer=>answerNode(answer)),...branch.answerEvidence.map(evidence=>evidenceNode(entry,evidence))];
       if(!spec.children.length)spec.children=[note("별도 답변 관계와 확인된 답변 근거가 없습니다.","a-empty")];
@@ -857,8 +896,8 @@ if(typeof document !== "undefined") (() => {
     const requestNode=(turn,number)=>{
       const open=turn===chosen,preview=turn.request.preview || "사용자 요청";
       return {kind:"raw-request",key:turn.request.messageId,number,label:preview,title:`${preview}\n원문 #${turn.request.index+1}`,expanded:open,selected:open,count:turn.responses.length,
-        data:{messageId:turn.request.messageId},
-        action:()=>{if(open)raw.clear();else{mindReveal={parent:turn.request.messageId,at:Date.now(),startedAt:null};raw.select(turn);}},
+        hits:open?0:countHits(turn.responses.map(item=>item.preview)),data:{messageId:turn.request.messageId},
+        action:()=>{if(open)raw.clear();else{mindReveal={parent:turn.request.messageId,at:Date.now(),startedAt:null};raw.select(turn);revealKey(turn.request.messageId);}},
         children:!open?[]:turn.responses.length?turn.responses.map(item=>{
           const text=item.preview || "어시스턴트 메시지";
           return {kind:"raw-response",key:item.messageId,label:text,title:`${text}\n원문 #${item.index+1} · 시간순 참조`,selected:mindAnswer===item.messageId,highlight:!mindAnswer,
@@ -870,7 +909,7 @@ if(typeof document !== "undefined") (() => {
     else for(let start=0;start<turns.length;start+=size) {
       const index=start/size,key="raw:"+index,open=mindTopic===key,slice=turns.slice(start,start+size);
       root.children.push({kind:"raw-group",key,number:String(index+1),label:`요청 ${start+1}–${start+slice.length}`,title:`사용자 요청 ${start+1}번부터 ${start+slice.length}번까지`,
-        expanded:open,selected:open,count:slice.length,children:open?slice.map((turn,offset)=>requestNode(turn,`${index+1}.${offset+1}`)):[],
+        expanded:open,selected:open,count:slice.length,hits:open?0:countHits(slice.map(turn=>turn.request.preview)),children:open?slice.map((turn,offset)=>requestNode(turn,`${index+1}.${offset+1}`)):[],
         action:()=>{mindTopic=open?null:key;rememberMind();renderMind(open?null:key);}});
     }
     return root;
@@ -887,11 +926,12 @@ if(typeof document !== "undefined") (() => {
     const focusHost=["mind-tree","mind-sessions"].find(id=>active?.closest?.("#"+id));
     const focus=focusHost ? {kind:active.dataset.kind,key:active.dataset.key,label:active.getAttribute("aria-label"),host:focusHost} : null;
     const term=byId("query").value.trim().toLocaleLowerCase(),project=byId("project").value;
-    const catalog=scopedCatalog().slice()
-      .sort(recentSessions)
-      .filter(session=>(!project || session.project===project) && (!term || sessionSearchText(session).includes(term)));
-    if(catalogReady && mindSession && !catalog.some(session=>session.id===mindSession)) {mindSession="";mindTopic=null;mindQuestion="";mindAnswer="";catalogOnly=false;}
-    const session=catalog.find(session=>session.id===mindSession),group=qaGroups.find(group=>group.sessionId===mindSession);
+    // The search box narrows the session list; an open session stays put and has its matching branches lit instead.
+    const rows=scopedCatalog().slice().sort(recentSessions).filter(session=>!project || session.project===project);
+    const catalog=rows.filter(session=>!term || sessionSearchText(session).includes(term));
+    if(catalogReady && mindSession && !rows.some(session=>session.id===mindSession)) {mindSession="";mindTopic=null;mindQuestion="";mindAnswer="";catalogOnly=false;}
+    const session=rows.find(session=>session.id===mindSession),group=qaGroups.find(group=>group.sessionId===mindSession);
+    mindTerm=term;
     explorer.updateSession(session?.id || "");
     byId('explorer-analyze').disabled=!session || !liveCatalog || window.parent===window;
     // Without a chosen session there is nothing to branch from, so the list stays up.
@@ -899,7 +939,7 @@ if(typeof document !== "undefined") (() => {
     byId("session-mindmap").setAttribute("aria-label",listOpen?"세션 목록":"세션 마인드맵");
     byId("mind-canvas").classList.toggle("session-picker-open",listOpen);
     byId("mind-session-picker").hidden=!listOpen;
-    byId("mind-tree-host").hidden=listOpen;
+    byId("mind-tree-host").hidden=listOpen;byId("mind-zoom").hidden=listOpen;
     byId("mind-session-list-info").textContent=`${catalog.length}개 · 최근 대화순 · 원문 미리보기`;
     byId("mind-session-change").hidden=!session;
     byId("mind-session-change").textContent=listOpen?"마인드맵으로 돌아가기":"세션 목록 펼치기";
@@ -917,9 +957,20 @@ if(typeof document !== "undefined") (() => {
     // New raw sessions do not change the saved analysis: a catalogue-only refresh keeps the
     // branch DOM and its motion and focus intact, updating only the root's label.
     const treeHost=byId("mind-tree"),sameTree=Boolean(session) && !listOpen && catalogOnly && treeHost.dataset.session===session.id;
+    treeHost.classList.toggle("searching",Boolean(term) && Boolean(session) && !listOpen);
     if(!session || listOpen) {treeHost.replaceChildren(mindLinks);treeHost.dataset.session="";mindPlan=null;mindAnswerSelection=null;}
     else if(sameTree) {const name=[...treeHost.querySelectorAll(".mind-node")].find(node=>node.dataset.kind==="session")?.querySelector(".name");if(name)name.textContent=sessionTitle(session);}
-    else {mindAnswerSelection=null;renderTree(raw?rawTree(session,raw):analysedTree(session,group,allTopics,branch));treeHost.dataset.session=session.id;}
+    else {
+      mindAnswerSelection=null;mindSearchHits=0;
+      renderTree(raw?rawTree(session,raw):analysedTree(session,group,allTopics,branch));treeHost.dataset.session=session.id;
+      // A new session is fitted around its root; afterwards the camera only moves enough to show what opened.
+      const fresh=mindCameraSession!==session.id;
+      if(fresh){mindCameraSession=session.id;fitTree();}
+      const chosen=mindPlan.nodes.filter(entry=>entry.depth>0 && entry.node.selected).at(-1);
+      if(reveal && reveal!==session.id)revealKey(reveal);
+      else if(chosen && (fresh || reveal))revealEntries([chosen]);
+      else {mindCamera=MindTree.clamp(mindCamera,viewSize(),treeSize());applyCamera();}
+    }
     const questionIndex=branch.questions.findIndex(entry=>QuestionAnswers.occurrenceKey(entry)===mindQuestion);
     byId("question-stepper").hidden=listOpen || (auxiliaryMode && !raw);
     if(raw) {
@@ -946,6 +997,7 @@ if(typeof document !== "undefined") (() => {
       }
       if(branch.question){const name=el("strong",nodeTitle(nodes.get(branch.question.nodeId),branch.question.source));name.title=name.textContent;trail.append(el("span","/","breadcrumb-arrow"),el("span","질문","breadcrumb-label"),name);}
       const notice=assignmentNotice(session);if(notice)trail.append(el("span",notice,"mind-selection-note"));
+      if(term && !listOpen)trail.append(el("span",`검색 "${byId("query").value.trim()}" · 맞는 가지 ${mindSearchHits}개`,"mind-selection-note mind-search-note"));
     } else trail.append(el("span","먼저 세션을 선택하세요. 최근 대화순으로 표시합니다.","hint"));
     if(!catalogOnly) {
     const actions=byId("mind-actions");actions.replaceChildren();
@@ -1003,10 +1055,10 @@ if(typeof document !== "undefined") (() => {
     const open=document.body.classList.contains('has-source-reader'),revealed=open&&!sourcePanelWasOpen;sourcePanelWasOpen=open;
     if(mindSessionListOpen)return;
     requestAnimationFrame(()=>{
-      if(revealed) {
-        const chosen=[...byId('mind-tree').querySelectorAll('.mind-node')].filter(node=>node.getAttribute('aria-pressed')==='true').at(-1);
-        (chosen || byId('mind-canvas')).scrollIntoView({block:chosen?'center':'start',behavior:'auto'});
-      }
+      if(revealed)byId('mind-canvas').scrollIntoView({block:'start',behavior:'auto'});
+      // The reader shortens the tree box; the chosen branch is panned back into view rather than the page scrolled.
+      const chosen=mindPlan?.nodes.filter(entry=>entry.depth>0 && entry.node.selected).at(-1);
+      if(chosen)revealEntries([chosen]);
       scheduleMindDraw();
     });
   }
@@ -1035,7 +1087,7 @@ if(typeof document !== "undefined") (() => {
       mindTopic=entry.topicId?"topic:"+entry.topicId:"unassigned";mindQuestion=QuestionAnswers.occurrenceKey(entry);mindAnswer="";
       selected=entry.nodeId;selectedSource=entry.source;
     }
-    mindPages[0]=Math.max(0,Math.floor(scopedCatalog().slice().sort(recentSessions).findIndex(s=>s.id===session.id)/8));
+    mindPage=Math.max(0,Math.floor(scopedCatalog().slice().sort(recentSessions).findIndex(s=>s.id===session.id)/8));
     close();rememberMind();render();centerMindSelection();byId("mind-canvas").scrollIntoView({block:"start",behavior:"auto"});
   }
   function details() {
@@ -1107,12 +1159,12 @@ if(typeof document !== "undefined") (() => {
   else restoredMindFilters=null;
   updateProjectOptions();
   byId("totals").textContent=`${data.nodes.length}개 항목 · ${data.edges.length}개 관계 · 분석된 세션 ${data.sessionCount}개`;
-  for(const [id,event] of [["query","input"],["project","change"]])byId(id).addEventListener(event,()=>{restoredMindFilters=null;mindPages[0]=0;render();rememberMind();});
-  byId("reset").addEventListener("click",()=>{for(const id of ["query","project"])byId(id).value="";restoredMindFilters=null;mindPages[0]=0;render();rememberMind();});
+  for(const [id,event] of [["query","input"],["project","change"]])byId(id).addEventListener(event,()=>{restoredMindFilters=null;mindPage=0;render();rememberMind();});
+  byId("reset").addEventListener("click",()=>{for(const id of ["query","project"])byId(id).value="";restoredMindFilters=null;mindPage=0;render();rememberMind();});
   for(const id of ["catalog-kind","catalog-parent"]) byId(id).addEventListener("change",()=>{
     if(id==="catalog-kind") catalogKind=byId(id).value;
     else catalogParent=byId(id).value;
-    mindSession="";mindTopic=null;mindQuestion="";mindAnswer="";mindTopicGroup="primary";mindPages=[0,0,0,0];
+    mindSession="";mindTopic=null;mindQuestion="";mindAnswer="";mindTopicGroup="primary";mindPage=0;
     render();rememberScope();rememberMind();
   });
   byId("mind-session-change").addEventListener("click",()=>{
@@ -1165,8 +1217,88 @@ if(typeof document !== "undefined") (() => {
     history.replaceState(null,"",location.pathname+location.search);close();rememberMind();render();
     byId("mind-canvas").scrollIntoView({block:"start",behavior:reducedMotion()?"auto":"smooth"});
   }
-  // Narrow screens get tighter levels; crossing that width re-lays the tree, anything else only redraws its lines.
-  window.addEventListener("resize",()=>{if(mindPlan && mindPlan.compact!==compactTree())renderMind();else scheduleMindDraw();});
+  // Narrow screens get tighter levels; crossing that width re-lays the tree, anything else keeps the camera in bounds.
+  window.addEventListener("resize",()=>{
+    if(mindPlan && mindPlan.compact!==compactTree())renderMind();
+    else {if(mindPlan){mindCamera=MindTree.clamp(mindCamera,viewSize(),treeSize());applyCamera(false);}scheduleMindDraw();}
+  });
+  // Pointer gestures on the tree box: one pointer drags, two pinch; a drag never counts as a click on a branch.
+  const treePointers=new Map();let treeDrag=null,treePinch=null,treeMoved=false;
+  const hostPoint=event=>{const rect=treeHostEl.getBoundingClientRect();return {x:event.clientX-rect.left,y:event.clientY-rect.top};};
+  treeHostEl.addEventListener("pointerdown",event=>{
+    if(!mindPlan || (event.button!==undefined && event.button!==0))return;
+    treePointers.set(event.pointerId,{x:event.clientX,y:event.clientY});
+    if(treePointers.size===1){treeDrag={x:event.clientX,y:event.clientY,camera:{...mindCamera}};treeMoved=false;}
+    else if(treePointers.size===2){
+      const [a,b]=[...treePointers.values()];treePinch={distance:Math.hypot(a.x-b.x,a.y-b.y),camera:{...mindCamera}};treeDrag=null;
+      for(const id of treePointers.keys())treeHostEl.setPointerCapture?.(id);
+    }
+  });
+  treeHostEl.addEventListener("pointermove",event=>{
+    if(!treePointers.has(event.pointerId))return;
+    treePointers.set(event.pointerId,{x:event.clientX,y:event.clientY});
+    if(treePinch && treePointers.size>=2) {
+      const [a,b]=[...treePointers.values()],rect=treeHostEl.getBoundingClientRect(),distance=Math.hypot(a.x-b.x,a.y-b.y);
+      mindCamera=MindTree.zoomAt(treePinch.camera,{x:(a.x+b.x)/2-rect.left,y:(a.y+b.y)/2-rect.top},distance/Math.max(1,treePinch.distance));
+      treeMoved=true;treeHostEl.classList.add("mind-dragging");applyCamera(false);return;
+    }
+    if(!treeDrag)return;
+    const dx=event.clientX-treeDrag.x,dy=event.clientY-treeDrag.y;
+    if(!treeMoved && Math.hypot(dx,dy)<4)return;
+    // Capturing only once a drag is under way keeps plain taps and clicks on the branch buttons.
+    if(!treeMoved)treeHostEl.setPointerCapture?.(event.pointerId);
+    treeMoved=true;treeHostEl.classList.add("mind-dragging");
+    mindCamera={x:treeDrag.camera.x+dx,y:treeDrag.camera.y+dy,k:treeDrag.camera.k};applyCamera(false);
+  });
+  const endTreePointer=event=>{
+    treePointers.delete(event.pointerId);
+    if(treePointers.size<2)treePinch=null;
+    if(!treePointers.size){treeDrag=null;treeHostEl.classList.remove("mind-dragging");
+      if(treeMoved){mindCamera=MindTree.clamp(mindCamera,viewSize(),treeSize());applyCamera();setTimeout(()=>{treeMoved=false;},0);}}
+  };
+  treeHostEl.addEventListener("pointerup",endTreePointer);treeHostEl.addEventListener("pointercancel",endTreePointer);
+  treeHostEl.addEventListener("click",event=>{if(treeMoved){event.stopPropagation();event.preventDefault();}},true);
+  treeHostEl.addEventListener("wheel",event=>{
+    if(!mindPlan)return;event.preventDefault();
+    if(event.ctrlKey || event.metaKey)zoomTree(Math.exp(-event.deltaY*0.002),hostPoint(event));
+    else {mindCamera=MindTree.clamp({...mindCamera,x:mindCamera.x-event.deltaX,y:mindCamera.y-event.deltaY},viewSize(),treeSize());applyCamera(false);}
+  },{passive:false});
+  // Focus and scroll-into-view may scroll the clipped box; that scroll becomes a camera move, so the box itself stays put.
+  treeHostEl.addEventListener("scroll",()=>{
+    const dx=treeHostEl.scrollLeft || 0,dy=treeHostEl.scrollTop || 0;if(!dx && !dy)return;
+    treeHostEl.scrollLeft=0;treeHostEl.scrollTop=0;
+    if(mindPlan){mindCamera={...mindCamera,x:mindCamera.x-dx,y:mindCamera.y-dy};applyCamera(false);}
+  });
+  byId("mind-zoom-in").addEventListener("click",()=>zoomTree(1.25));
+  byId("mind-zoom-out").addEventListener("click",()=>zoomTree(0.8));
+  byId("mind-zoom-reset").addEventListener("click",()=>zoomTree(1/mindCamera.k));
+  byId("mind-fit").addEventListener("click",()=>fitTree({min:.2}));
+  // Arrow keys walk the visible branches in reading order; → opens or enters a branch, ← folds it or steps back.
+  treeEl.addEventListener("keydown",event=>{
+    if(!mindPlan)return;const target=event.target?.closest?.(".mind-node");if(!target)return;
+    const order=mindPlan.nodes.filter(entry=>entry.element?.classList.contains("mind-node"));
+    const index=order.findIndex(entry=>entry.element===target);if(index<0)return;
+    const current=order[index];let next=null;
+    switch(event.key) {
+      case "ArrowDown":next=order[index+1] || null;break;
+      case "ArrowUp":next=order[index-1] || null;break;
+      case "Home":next=order[0];break;
+      case "End":next=order[order.length-1];break;
+      case "ArrowRight": {
+        const child=order.find(entry=>entry.parent===current);
+        if(child)next=child;
+        else if(!current.node.expanded && !["session","answer","answer-evidence","raw-response","auxiliary-item"].includes(current.node.kind)){event.preventDefault();target.click();return;}
+        break;
+      }
+      case "ArrowLeft": {
+        if(current.node.expanded && current.depth>0){event.preventDefault();target.click();return;}
+        next=current.parent?.element?.classList.contains("mind-node")?current.parent:null;break;
+      }
+      default:return;
+    }
+    event.preventDefault();
+    if(next){next.element.focus({preventScroll:true});revealEntries([next]);}
+  });
   window.addEventListener("pagehide",()=>{
     rememberMind();
     catalogStopped=true;clearTimeout(catalogTimer);catalogRequest?.abort();
@@ -1201,7 +1333,7 @@ if(typeof document !== "undefined") (() => {
     openSource:(sid,message)=>explorer.openReader(sid,message),redraw:()=>{renderMind();},remember:rememberMind,
     locate:(index,total)=>{mindTopic=total>10?"raw:"+Math.floor(index/10):null;mindAnswer="";}});
   const requested=new URLSearchParams(location.hash.slice(1)).get("node");
-  document.body.classList.add("mind-mode");byId("query").placeholder="제목·첫 요청·프로젝트 검색";
+  document.body.classList.add("mind-mode");byId("query").placeholder="세션·가지 검색";
   syncMindMotion();
   if(requested && nodes.has(requested)) choose(requested);else render();
   refreshCatalog();

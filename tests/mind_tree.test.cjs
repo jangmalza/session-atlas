@@ -58,3 +58,44 @@ test('numbering and visible order follow the open branches only', () => {
   const root = branch('root', [branch('a', [leaf('a1')], false), branch('b', [leaf('b1'), leaf('b2')])]);
   assert.deepEqual(MindTree.visible(root).map(node => node.key), ['root', 'a', 'b', 'b1', 'b2']);
 });
+
+const view = {width: 400, height: 300};
+
+test('fit scales a tree down to the viewport within its limits and centres what fits', () => {
+  assert.deepEqual(MindTree.fit(view, {width: 100, height: 50}, {pad: 20}), {x: 150, y: 125, k: 1}, 'a small tree is centred at 100%');
+  const wide = MindTree.fit(view, {width: 720, height: 100}, {pad: 20});
+  assert.equal(wide.k, 0.5);
+  assert.equal(wide.x, 20, 'a tree as wide as the viewport starts at the padding');
+  assert.equal(wide.y, (300 - 50) / 2);
+  const tall = MindTree.fit(view, {width: 100, height: 2600}, {pad: 20, min: 0.5, focusY: 1300});
+  assert.equal(tall.k, 0.5, 'the minimum scale wins over fitting a very tall tree');
+  assert.equal(tall.y, 150 - 1300 * 0.5, 'the focus row sits at the vertical middle');
+  const top = MindTree.fit(view, {width: 100, height: 2600}, {pad: 20, min: 0.5, focusY: 10});
+  assert.equal(top.y, 20, 'a focus near the top cannot push the tree below the padding');
+});
+
+test('zooming keeps the point under the pointer still and respects the scale limits', () => {
+  const camera = {x: 10, y: 20, k: 1}, point = {x: 110, y: 70};
+  const zoomed = MindTree.zoomAt(camera, point, 2);
+  assert.deepEqual(zoomed, {x: 110 - 100 * 2, y: 70 - 50 * 2, k: 2});
+  const treeX = (point.x - camera.x) / camera.k, treeXAfter = (point.x - zoomed.x) / zoomed.k;
+  assert.equal(treeX, treeXAfter);
+  assert.equal(MindTree.zoomAt(camera, point, 100).k, 2.5);
+  assert.equal(MindTree.zoomAt(camera, point, 0.01).k, 0.25);
+});
+
+test('reveal moves the camera as little as needed and shows the start of a box that cannot fit', () => {
+  const camera = {x: 0, y: 0, k: 1};
+  assert.deepEqual(MindTree.reveal(camera, view, {x: 100, y: 100, width: 50, height: 30}, {pad: 20}), camera, 'a visible box leaves the camera alone');
+  assert.deepEqual(MindTree.reveal(camera, view, {x: 380, y: 290, width: 50, height: 30}, {pad: 20}), {x: -50, y: -40, k: 1}, 'an edge box is pulled in by its overflow');
+  assert.deepEqual(MindTree.reveal({x: -200, y: -200, k: 1}, view, {x: 100, y: 100, width: 50, height: 30}, {pad: 20}), {x: -80, y: -80, k: 1});
+  const large = MindTree.reveal({x: -300, y: -300, k: 1}, view, {x: 40, y: 60, width: 1000, height: 1000}, {pad: 20});
+  assert.deepEqual(large, {x: 20 - 40, y: 20 - 60, k: 1}, 'an oversized box is aligned to its top-left so its first rows show');
+});
+
+test('clamp keeps part of the tree inside the viewport and bounds covers a set of rows', () => {
+  const size = {width: 500, height: 400};
+  assert.deepEqual(MindTree.clamp({x: 900, y: 900, k: 1}, view, size, {keep: 48}), {x: 352, y: 252, k: 1});
+  assert.deepEqual(MindTree.clamp({x: -900, y: -900, k: 0.5}, view, size, {keep: 48}), {x: 48 - 250, y: 48 - 200, k: 0.5});
+  assert.deepEqual(MindTree.bounds([{x: 10, y: 40, width: 100, height: 30}, {x: 150, y: 10, width: 60, height: 30}]), {x: 10, y: 10, width: 200, height: 60});
+});

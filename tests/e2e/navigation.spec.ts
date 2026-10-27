@@ -23,6 +23,17 @@ test('tree branches, verified source panel and next question preserve original c
   await frame.locator('#question-next').click();
   await expect(frame.locator('.reader-target .reader-original')).toHaveText('Synthetic question 001 literal <img src=x>.');
   await page.screenshot({path:testInfo.outputPath('verified-source-panel.png')});
+  await frame.locator('#mind-tree [data-kind="question"][aria-pressed="true"]').focus();
+  await page.keyboard.press('ArrowDown');
+  await expect(frame.locator('#mind-tree [data-kind="answer"]').first()).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(frame.locator('#mind-tree [data-kind="question"]').nth(2)).toBeFocused();
+  await page.keyboard.press('ArrowLeft');
+  await expect(frame.locator('#mind-tree [data-kind="topic"]').first()).toBeFocused();
+  await frame.locator('#mind-fit').click();
+  const host=(await frame.locator('#mind-tree-host').boundingBox())!,rootBox=(await frame.locator('#mind-tree [data-kind="session"]').boundingBox())!;
+  expect(rootBox.x).toBeGreaterThanOrEqual(host.x);expect(rootBox.y).toBeGreaterThanOrEqual(host.y);
+  expect(rootBox.x+rootBox.width).toBeLessThanOrEqual(host.x+host.width);
   await frame.locator('#source-reader-close').click();
   await frame.locator('#mind-session-change').click();await expect(frame.locator('#mind-tree-host')).toBeHidden();
   await frame.locator('#mind-session-change').click();

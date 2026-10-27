@@ -21,7 +21,7 @@ Snapshots are read-only inputs. The optional Conversation Map retains its origin
 
 ## Reading original messages
 
-The dashboard has a single screen: the mind map, a tree that grows from the session at the left through its topics and questions to its answers. Topics are always shown; questions and answers open when their branch is clicked. A session without analysis grows session → request → response instead, with its user requests and assistant responses in original order. Selecting a question, request or response opens the **reader panel** at the bottom with that message and its surrounding conversation.
+The dashboard has a single screen: the mind map, a tree that grows from the session at the left through its topics and questions to its answers. Topics are always shown; questions and answers open when their branch is clicked. The tree pans by dragging, zooms with Ctrl+wheel or pinch, fits with **전체 보기**, and can be walked with the arrow keys; the search box lights matching branches of the open session. A session without analysis grows session → request → response instead, with its user requests and assistant responses in original order. Selecting a question, request or response opens the **reader panel** at the bottom with that message and its surrounding conversation.
 
 The reader panel is the full reading surface:
 
