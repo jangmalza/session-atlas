@@ -516,6 +516,10 @@
   byId("reopen-search").addEventListener("click", () => { if (!searchDialog.open) searchDialog.showModal(); });
   byId("search-previous").addEventListener("click", () => { if (searchPage) runSearch(Math.max(0,searchPage.offset-30)); });
   byId("search-next").addEventListener("click", () => { if (searchPage) runSearch(searchPage.offset+30); });
+  byId("back-to-mindmap").addEventListener("click", () => {
+    if (window.parent !== window) window.parent.postMessage({type: "context-graph-open-mindmap"}, location.origin);
+    else location.assign("graph.html");
+  });
   byId("view-conversation").addEventListener("click", () => switchView("conversation"));
   byId("view-analysis").addEventListener("click", () => switchView("analysis"));
   byId("close-analysis").addEventListener("click", closeDetail);

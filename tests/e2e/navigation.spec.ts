@@ -20,7 +20,7 @@ test('four columns, verified source panel and next question preserve original co
   await expect(frame.locator('.reader-target .reader-original')).toHaveText('Synthetic question 001 literal <img src=x>.');
   await page.screenshot({path:testInfo.outputPath('verified-source-panel.png')});
   await frame.locator('#source-reader-close').click();
-  await frame.locator('#session-list-mode').click();await frame.locator('#mind-mode').click();
+  await frame.locator('#mind-session-change').click();await frame.locator('#mind-session-change').click();
   await expect(frame.locator('#mind-questions [aria-pressed="true"] .name')).toHaveText('E2E question 01');
   await expect(frame.locator('#mind-links .mind-edge-active')).not.toHaveCount(0);
 });
@@ -32,8 +32,9 @@ test('reader returns to the same old page after navigation and reload',async({pa
   await frame.locator('#message-list .raw-message').first().locator('summary').first().click();
   await frame.locator('#message-list').evaluate(e=>{e.scrollTop=180;});
   const first=await frame.locator('#message-list .message').first().getAttribute('data-message-id');
-  await page.locator('nav [data-view="graph"]').click();await expect(page.frameLocator('#live-frame').locator('#session-list-mode')).toBeVisible();
-  await page.locator('nav [data-view="timeline"]').click();frame=page.frameLocator('#live-frame');
+  await frame.locator('#back-to-mindmap').click();await expect(page.frameLocator('#live-frame').locator('#mind-canvas')).toBeVisible();
+  await expect(page.locator('nav [data-view]')).toHaveCount(0);
+  await page.goto('/?view=timeline');frame=page.frameLocator('#live-frame');
   await expect(frame.locator('#message-list .message').first()).toHaveAttribute('data-message-id',first!);
   await page.reload();await expect(page.frameLocator('#live-frame').locator('#message-list .message').first()).toHaveAttribute('data-message-id',first!);
   await expect(page.frameLocator('#live-frame').locator('#follow-latest')).not.toBeChecked();
@@ -56,9 +57,9 @@ test('management menus and mobile layouts remain usable',async({page})=>{
   await frame.locator('#mind-question-title-action>.node-management>summary').click();
   await frame.locator('#mind-question-title-edit').click();await expect(frame.locator('#item-title-dialog')).toBeVisible();
   await frame.locator('#item-title-close').click();
-  await page.setViewportSize({width:390,height:844});await frame.locator('#session-list-mode').click();
+  await page.setViewportSize({width:390,height:844});await frame.locator('#mind-session-change').click();
   expect(await frame.locator('html').evaluate((e:any)=>e.scrollWidth<=e.clientWidth)).toBe(true);
-  await frame.locator('#mind-mode').click();
+  await frame.locator('#mind-session-change').click();
   expect(await frame.locator('html').evaluate((e:any)=>e.scrollWidth<=e.clientWidth)).toBe(true);
 });
 test('unanalysed conversations show explicit chronological turns without generating analysis',async({page,request})=>{

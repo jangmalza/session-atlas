@@ -558,7 +558,7 @@ def timeline_html() -> bytes:
 <meta http-equiv="Content-Security-Policy" content="{policy}"><meta name="referrer" content="no-referrer">
 <title>세션 · 메시지 타임라인</title><style>{style}</style></head><body>
 <header><div><span class="eyebrow">SOURCE / 원문 기록</span><h1>원문 이어 읽기</h1><p>원문을 검색하고, 앞뒤 맥락과 저장된 분석을 함께 확인하세요.</p></div>
-<div class="reading-controls"><button id="toggle-sessions" type="button" aria-expanded="true">세션 목록 숨기기</button>
+<div class="reading-controls"><button id="back-to-mindmap" type="button">← 마인드맵으로</button><button id="toggle-sessions" type="button" aria-expanded="true">세션 목록 숨기기</button>
 <label>글자 크기 <select id="reading-size" aria-label="글자 크기"><option value="normal">보통</option><option value="large">크게</option><option value="largest">아주 크게</option></select></label>
 <span id="timeline-state" role="status">불러오는 중</span></div></header>
 <section class="fulltext-search" aria-label="전체 원문 검색"><form id="fulltext-form">

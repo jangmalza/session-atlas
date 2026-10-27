@@ -264,7 +264,6 @@ if(typeof document !== "undefined") (() => {
   let selected = null, mode = "mind", page = 0, neighborPage = 0, fit = false;
   let selectedSource=null,itemDisplayTarget=null,itemDisplaySaving=false,itemDisplayResult=null;
   const itemTitleDrafts=new Map();
-  try {if(sessionStorage.getItem("context-graph-reading-mode")==="qa")mode="qa";} catch (_) {}
   if(new URLSearchParams(location.search).get("mode")==="mind") mode="mind";
   const savedContext=JSON.parse(byId("qa-context").textContent);
   const liveCatalog=/^https?:$/.test(location.protocol);

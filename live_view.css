@@ -1,5 +1,5 @@
 html,body{height:100%;margin:0}
-body{display:grid;grid-template-rows:auto auto minmax(0,1fr);background:var(--bg);color:var(--text);font-family:var(--sans)}
+body{display:grid;grid-template-rows:auto minmax(0,1fr);background:var(--bg);color:var(--text);font-family:var(--sans)}
 header{padding:10px 22px 9px;background:var(--panel);border-bottom:1px solid var(--line)}
 header{position:relative;z-index:12}
 .heading{display:flex;align-items:center;gap:12px;flex-wrap:wrap}

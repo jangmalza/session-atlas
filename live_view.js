@@ -118,7 +118,15 @@
     location.assign(url.href);
   });
   window.addEventListener("message", event => {
-    if(event.origin !== location.origin || event.source !== frame.contentWindow || !["context-graph-open-source","context-graph-open-session","context-graph-reader-position"].includes(event.data?.type)) return;
+    if(event.origin !== location.origin || event.source !== frame.contentWindow) return;
+    if(event.data?.type==="context-graph-open-mindmap"){
+      // The timeline has no tab bar to return through; its own button brings the mind map back.
+      savePosition();
+      const url=new URL(location.href);
+      url.searchParams.delete("session");url.searchParams.delete("message");url.searchParams.set("view","graph");
+      location.assign(url.href);return;
+    }
+    if(!["context-graph-open-source","context-graph-open-session","context-graph-reader-position"].includes(event.data?.type)) return;
     const session=event.data.session, message=event.data.message;
     if(typeof session!=="string" || !/^[A-Za-z0-9-]{1,128}$/.test(session)) return;
     if(event.data.type==='context-graph-reader-position'){
