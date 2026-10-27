@@ -14,7 +14,7 @@ import time
 import uuid
 
 import analysis_pipeline as ap
-from analysis_credentials import WindowsCredentials
+from analysis_credentials import CredentialUnavailable, credential_store
 from topic_display import _locked_preferences
 
 ACTIVE = {'queued', 'backing_up', 'analyzing', 'validating', 'building', 'classifying', 'saving'}
@@ -99,7 +99,7 @@ class AnalysisControl:
         self.database = Path(database).resolve()
         self.codex_home = Path(codex_home).resolve()
         self.root = self.database.parent / (self.database.stem + '.analysis-control')
-        self.credentials = credentials or WindowsCredentials(self.database)
+        self.credentials = credentials or credential_store(self.database)
         self.launcher = launcher
         self._children = []
 
@@ -125,13 +125,17 @@ class AnalysisControl:
             cm_ready = False
         stored = bool(self.credentials.read(presence_only=True))
         inherited = bool(os.environ.get('OPENAI_API_KEY', '').strip())
+        storage_available = bool(self.credentials.supported)
         auth = read_json(self.root / 'codex-status.json')
         return {'cmRoot': config.get('cmRoot', ''), 'conversationMapReady': cm_ready,
                 'codexInstalled': shutil.which('codex') is not None,
                 'nodeInstalled': shutil.which('node') is not None,
                 'codexAuth': auth.get('status', 'unchecked'), 'codexCheckedAt': auth.get('at'),
-                'keyRegistered': stored or inherited, 'keySource': 'windows' if stored else 'environment' if inherited else 'none',
-                'keyStorageAvailable': self.credentials.supported, 'keyValidation': 'not_checked',
+                'keyRegistered': stored or inherited,
+                'keySource': self.credentials.kind if stored else 'environment' if inherited else 'none',
+                'keyStorageAvailable': storage_available,
+                'keyStorageReason': None if storage_available else getattr(self.credentials, 'unavailable_reason', None),
+                'keyValidation': 'not_checked',
                 'autoAnalysis': False}
 
     def edit_settings(self, arguments):
@@ -155,9 +159,15 @@ class AnalysisControl:
                 key = arguments['key']
                 if not isinstance(key, str) or not 16 <= len(key) <= 2048 or not re.fullmatch(r'[!-~]+', key):
                     raise ControlError('invalid_key')
-                self.credentials.write(key)
+                try:
+                    self.credentials.write(key)
+                except CredentialUnavailable:
+                    raise ControlError('key_storage_unavailable') from None
             elif action == 'delete_key' and set(arguments) == {'action'}:
-                self.credentials.delete()
+                try:
+                    self.credentials.delete()
+                except CredentialUnavailable:
+                    raise ControlError('key_storage_unavailable') from None
             else:
                 raise ControlError('invalid_settings')
         return self.settings()

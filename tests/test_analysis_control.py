@@ -26,6 +26,7 @@ SECRET = 'synthetic-key-never-use-for-real-requests'
 
 class MemoryCredentials:
     supported = True
+    kind = 'windows'
     def __init__(self): self.key = None
     def read(self, *, presence_only=False): return bool(self.key) if presence_only else self.key
     def write(self, key): self.key = key

@@ -49,7 +49,7 @@ The session list, full-text search, original-message reader and chronological re
 | `live_dashboard.py` | Loopback HTTP dashboard and JSON endpoints |
 | `session_timeline.py` | Read-only timeline/search queries and the timeline page |
 | `analysis_control.py` | Explicitly confirmed single-session analysis jobs with staging and backup |
-| `analysis_credentials.py` | Windows Credential Manager storage for the Decisions key |
+| `analysis_credentials.py` | Decisions key storage: Windows Credential Manager, or the OS keychain through `keyring` elsewhere |
 | `decisions_topics.py` | Decisions API client with cache |
 | `service_runtime.py` | Process supervisor and Windows login autostart |
 | `source_adapters.py` | Claude Code JSONL adapter |
@@ -88,7 +88,7 @@ Set `E2E_PYTHON` to a Python 3.14 executable when `python` on `PATH` is not one.
 
 - Collection, refresh and viewing never call a model or an external API; the old `watch --analyze` flags are rejected.
 - Model and API use require `--allow-model` / `--allow-api` on the CLI, or an explicit per-session confirmation in the dashboard.
-- Keys are never returned to the browser or written to app files, browser storage, databases, backups or logs; on Windows the Decisions key is stored in the current user's credential set, elsewhere it is read from `OPENAI_API_KEY`.
+- Keys are never returned to the browser or written to app files, browser storage, databases, backups or logs; the Decisions key is stored in the current user's Windows credential set, or on macOS/Linux in the OS keychain through the optional [`keyring`](https://pypi.org/project/keyring/) package (`pip install keyring`, included by `pip install -e .`); without a usable keychain it is read from `OPENAI_API_KEY`.
 - Analysis draft caches (`analysis-cache/`) contain raw conversation quotes and are git-ignored; do not share or commit them. `decisions-cache/` keeps only normalized choices, confidence and hashes.
 - Backups contain collected conversations and must stay private. Stored content is not redacted; failure logs omit raw provider/validator diagnostics.
 

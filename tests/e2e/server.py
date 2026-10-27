@@ -15,6 +15,7 @@ from analysis_control import AnalysisControl, write_json
 
 class FakeCredentials:
     supported = True
+    kind = 'windows'
 
     def __init__(self):
         self.key = None
