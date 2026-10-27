@@ -10,7 +10,7 @@
 .mind-evidence-edge.mind-edge-active{opacity:.7;stroke-width:2}
 .raw-chronology .mind-edge{stroke-dasharray:4 4;stroke:var(--muted)}
 .node-management{position:relative;display:inline-block;border:0;padding:0;margin:0;font-size:12px}
-.node-management>summary{list-style:none;padding:1px 10px;border:1px solid var(--line);border-radius:3px;font-size:20px;line-height:26px;color:var(--muted);background:var(--panel)}
+.node-management>summary{list-style:none;cursor:pointer;padding:4px 10px;border:1px solid var(--line);border-radius:3px;font-size:12px;line-height:20px;color:var(--muted);background:var(--panel);white-space:nowrap}
 .node-management>summary::-webkit-details-marker{display:none}
 .node-management[open]>summary{border-color:var(--accent);color:var(--accent)}
 .node-management-content{position:absolute;left:0;top:calc(100% + 5px);z-index:30;width:260px;max-width:calc(100vw - 36px);padding:12px;background:var(--panel);border:1px solid var(--line);box-shadow:0 10px 30px var(--shadow);border-radius:3px}

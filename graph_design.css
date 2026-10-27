@@ -13,6 +13,8 @@ header,.controls,.layout{max-width:1680px;min-width:0}
 input,select,button{font-size:14px;border-radius:3px;padding:9px 11px}
 button:hover{background:var(--tint)}
 button[aria-pressed=true]{color:var(--accent)}
+button:disabled{opacity:.55;border-style:dashed;color:var(--muted);cursor:not-allowed}
+button:disabled:hover{background:var(--panel);border-color:var(--line)}
 .controls{padding:12px 26px;align-items:center}
 .controls input{min-width:120px}
 .controls select{max-width:220px;min-width:110px}
@@ -228,6 +230,7 @@ svg .node-kind,svg .edge-label{font-size:11px}
 .catalog-scope select{font-size:13px;padding:6px 9px}
 .context-help summary,.mind-help summary{font-size:12px}
 .mind-stage-nav button{font-size:13px}
+@media(min-width:1200px){.mind-stage-nav{display:none}}
 .mind-column:before{font-size:11px}
 .mind-meta{font-size:12px}
 .mind-activity{font-size:11px}

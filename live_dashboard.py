@@ -127,14 +127,14 @@ def _index_html(status: dict) -> bytes:
     return f'''<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="{policy}"><meta name="referrer" content="no-referrer">
 <title>Session Atlas · 자동 수집</title><style>{style}</style></head><body>
-<header><div class="heading"><div class="brand"><svg viewBox="0 0 54 24" width="45" height="24" aria-hidden="true"><path d="M6 12H48" fill="none" stroke="currentColor"/><path d="M3 9h6v6H3zM18 9h6v6h-6zM33 9h6v6h-6zM45 9h6v6h-6z" fill="currentColor"/></svg><h1>SESSION ATLAS</h1><span class="brand-caption">대화 기록실</span></div><span id="collector-state" role="status">수집 준비 중</span><span class="model-policy">모델 자동 분석 꺼짐</span><label class="ui-theme">화면<select data-ui-theme aria-label="화면 테마"><option value="paper">종이 화면</option><option value="dark">어두운 화면</option><option value="system">시스템 설정</option></select></label><details class="collection-stats"><summary>수집 현황</summary><div class="metrics"><div><strong data-testid="session-count">0</strong><span>수집한 세션</span></div>
+<header><div class="heading"><div class="brand"><svg viewBox="0 0 54 24" width="45" height="24" aria-hidden="true"><path d="M6 12H48" fill="none" stroke="currentColor"/><path d="M3 9h6v6H3zM18 9h6v6h-6zM33 9h6v6h-6zM45 9h6v6h-6z" fill="currentColor"/></svg><h1>SESSION ATLAS</h1></div><span id="collector-state" role="status">수집 준비 중</span><label class="ui-theme">화면<select data-ui-theme aria-label="화면 테마"><option value="system">기기 설정 따름</option><option value="paper">종이 화면</option><option value="dark">어두운 화면</option></select></label><details class="collection-stats"><summary>수집 현황</summary><div class="metrics"><div><strong data-testid="session-count">0</strong><span>수집한 세션</span></div>
 <div><strong data-testid="message-count">0</strong><span>수집한 메시지</span></div>
 <div><strong data-testid="analysed-count">0</strong><span>분석된 세션</span></div>
 <div><strong data-testid="pending-count">0</strong><span>분석 대기 세션</span></div>
-<div><strong data-testid="pending-message-count">0</strong><span>분석 대기 메시지</span></div></div></details></div>
+<div><strong data-testid="pending-message-count">0</strong><span>분석 대기 메시지</span></div><p class="policy-note">수집과 열람은 모델을 호출하지 않습니다. 분석은 요청한 세션에만 실행됩니다.</p></div></details></div>
 <p class="explanation">새 대화는 수집하여 저장합니다. 그래프에는 요청하여 분석한 결과만 표시하며, 기존 분석과 근거는 유지합니다.</p></header>
-<nav aria-label="보기 선택"><div class="views"><button type="button" data-view="graph" aria-pressed="true">대화 탐색</button>
-<button type="button" data-view="timeline" aria-pressed="false">원문·검색</button></div><span id="last-checked">첫 수집을 기다리고 있습니다.</span></nav>
+<nav aria-label="보기 선택"><div class="views"><button type="button" data-view="graph" aria-pressed="true">세션 탐색</button>
+<button type="button" data-view="timeline" aria-pressed="false">원문 읽기·검색</button></div><span id="last-checked">첫 수집을 기다리고 있습니다.</span></nav>
 <main><p id="initial-wait">저장된 분석 결과를 준비하고 있습니다.</p><iframe id="live-frame" title="분석 그래프" hidden></iframe></main>
 {analysis_markup}<script type="application/json" id="live-status">{payload}</script><script>{script}</script></body></html>'''.encode("utf-8")
 

@@ -6,6 +6,7 @@ header p{font-size:13px}
 button,input,select{border-radius:3px}
 button:hover{background:var(--tint)}
 button[aria-pressed=true]{color:var(--accent)}
+button:disabled{opacity:.55;border-style:dashed;color:var(--muted);cursor:not-allowed}
 .reading-controls label{font-size:12px}
 .reading-controls button,.reading-controls select{font-size:12px}
 #timeline-state{font:11px/1.5 var(--mono);border:1px solid var(--line);border-radius:2px;padding:4px 8px}
@@ -37,4 +38,4 @@ button[aria-pressed=true]{color:var(--accent)}
 .search-result{border-radius:3px}
 #search-dialog{background:var(--panel);color:var(--text);border:1px solid var(--line);border-top:3px solid var(--accent);border-radius:5px}
 :root[data-theme=dark] .message-state.pending,:root[data-theme=dark] #timeline-state.error{color:#ffe0a1;background:#4c3a1c}
-@media(max-width:700px){header{padding:14px 16px}h1{font-size:24px}.conversation-head h2{font-size:21px}.message{padding:18px}.muted{font-size:12px}.reading-controls{gap:7px}}
+@media(max-width:700px){header{padding:12px 16px}header p{display:none}h1{font-size:22px}.conversation-head h2{font-size:21px}.message{padding:18px}.muted{font-size:12px}.reading-controls{gap:7px}}

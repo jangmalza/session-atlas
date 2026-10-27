@@ -51,8 +51,8 @@ const SessionAtlasTools = (() => {
     function unavailable(message){
       serial++;reader=null;lastRequest=null;panel.hidden=false;document.body.classList.add("has-source-reader");
       body.replaceChildren(el("p",message,"reader-empty"));byId("source-reader-title").textContent="원문 연결 확인";
-      byId("source-reader-status").textContent="";
-      for(const id of ["source-reader-older","source-reader-newer","source-reader-full","source-reader-retry"])byId(id).disabled=true;
+      byId("source-reader-status").textContent="";byId("source-reader-retry").hidden=true;
+      for(const id of ["source-reader-older","source-reader-newer","source-reader-full"])byId(id).disabled=true;
       onLayout?.();
     }
     async function openReader(session,message="",offset=null) {
@@ -62,8 +62,8 @@ const SessionAtlasTools = (() => {
       panel.hidden=false;document.body.classList.add("has-source-reader");
       byId("source-reader-title").textContent=title(session);
       byId("source-reader-status").textContent="원문을 불러오는 중…";
-      body.replaceChildren();
-      for(const id of ["source-reader-older","source-reader-newer","source-reader-full","source-reader-retry"])byId(id).disabled=true;
+      body.replaceChildren();byId("source-reader-retry").hidden=true;
+      for(const id of ["source-reader-older","source-reader-newer","source-reader-full"])byId(id).disabled=true;
       onLayout?.();
       const query=new URLSearchParams({session,limit:"7"});
       if(offset!==null)query.set("offset",String(offset));else if(message)query.set("message",message);
@@ -96,7 +96,7 @@ const SessionAtlasTools = (() => {
       } catch (_) {
         if(request!==serial)return;
         byId("source-reader-status").textContent="원문을 불러오지 못했습니다. 다시 시도해 주세요.";
-        byId("source-reader-retry").disabled=false;
+        byId("source-reader-retry").hidden=false;
       }
     }
     body.addEventListener("scroll",()=>{

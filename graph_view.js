@@ -537,7 +537,7 @@ if(typeof document !== "undefined") (() => {
     control.value=value;
   }
   function updateCatalogScope() {
-    const rows=catalogRows(),labels={primary:"일반 대화",subagent:"보조 작업",unknown:"분류 미확정"};
+    const rows=catalogRows(),labels={primary:"일반 세션",subagent:"보조 작업",unknown:"분류 미확정"};
     replaceOptions(byId("catalog-kind"),Object.entries(labels).map(([key,title])=>[key,`${title} · ${rows.filter(session=>sessionKind(session)===key).length}개`]),catalogKind);
     const groups=new Map();
     for(const session of rows.filter(session=>sessionKind(session)==="subagent")) {
@@ -546,12 +546,12 @@ if(typeof document !== "undefined") (() => {
     if(catalogReady && !groups.has(catalogParent)) catalogParent=groups.keys().next().value || "";
     const choices=[...groups].map(([key,count])=>{
       const parent=rows.find(session=>session.id===key);
-      return [key,`${parent?.displayTitle || parent?.title || (key==="unknown-parent"?"상위 대화 미확정":"수집되지 않은 상위 대화 · "+key.slice(0,8))} · 보조 작업 ${count}개`];
+      return [key,`${parent?.displayTitle || parent?.title || (key==="unknown-parent"?"상위 세션 미확정":"수집되지 않은 상위 세션 · "+key.slice(0,8))} · 보조 작업 ${count}개`];
     });
     replaceOptions(byId("catalog-parent"),choices,catalogParent);
     byId("catalog-parent").disabled=!choices.length;
     byId("catalog-parent-filter").hidden=catalogKind!=="subagent";
-    byId("catalog-scope-hint").textContent=catalogKind==="primary" ? "직접 시작한 대화입니다. 위의 보조 작업에서 에이전트 작업을 상위 대화별로 볼 수 있습니다." : catalogKind==="subagent" ? "선택한 상위 대화에서 파생된 보조 작업입니다. 제목은 확인된 분기 후 요청을 사용합니다." : "종류를 확인할 수 없는 기록입니다. 원문은 그대로 열어 볼 수 있습니다.";
+    byId("catalog-scope-hint").textContent=catalogKind==="primary" ? "직접 시작한 세션입니다. 위의 보조 작업에서 에이전트 작업을 상위 세션별로 볼 수 있습니다." : catalogKind==="subagent" ? "선택한 상위 세션에서 파생된 보조 작업입니다. 제목은 확인된 분기 후 요청을 사용합니다." : "종류를 확인할 수 없는 기록입니다. 원문은 그대로 열어 볼 수 있습니다.";
   }
   function scopedCatalog() {
     updateCatalogScope();
@@ -876,7 +876,7 @@ if(typeof document !== "undefined") (() => {
     byId("mind-session-list-info").textContent=mindSessionListOpen?`${catalog.length}개 · 최근 대화순 · 원문 미리보기`:"";
     byId("mind-session-list-info").hidden=!mindSessionListOpen;
     byId("mind-session-change").hidden=mindSessionListOpen && !session;
-    byId("mind-session-change").textContent=mindSessionListOpen?"선택한 세션의 마인드맵":"넓은 목록";
+    byId("mind-session-change").textContent=mindSessionListOpen?"마인드맵으로 돌아가기":"세션 목록 펼치기";
     for(const host of mindHosts.slice(1))byId(host).closest(".mind-column").hidden=mindSessionListOpen;
     byId("mind-actions").hidden=mindSessionListOpen;
     renderSessionEditor("mind",session);
@@ -962,7 +962,7 @@ if(typeof document !== "undefined") (() => {
       actions.append(el("p","보조 항목을 누르면 기존 내용과 원문 근거, 저장된 관계를 확인할 수 있습니다.","hint"));
     } else if(branch.question) {
       const entry=branch.question,node=nodes.get(entry.nodeId);actions.append(el("h2",nodeTitle(node,entry.source)),el("p",node.summary || "요약 없음"));
-      const source=button("이 질문과 앞뒤 원문 대화 읽기",()=>{rememberMind();openSource(entry.source,source,entry.anchor.sourceMessageId);},"source-open");
+      const source=button("이 질문의 앞뒤 원문 읽기",()=>{rememberMind();openSource(entry.source,source,entry.anchor.sourceMessageId);},"source-open");
       source.disabled=!entry.anchor || !/^https?:$/.test(location.protocol);
       actions.append(source,button("질문·근거 보기",()=>choose(entry.nodeId,entry.source)));
       if(entry.anchor)actions.append(button("하단 원문 패널",()=>explorer.openReader(entry.source.session_id,entry.anchor.messageId)));
@@ -973,11 +973,11 @@ if(typeof document !== "undefined") (() => {
         const original=button("이 주제의 사용자 근거 원문 읽기",()=>openSource({session_id:mindSession,source_node:evidence.sourceNodeId},original,evidence.sourceMessageId),"topic-source-open");
         original.disabled=!/^https?:$/.test(location.protocol);actions.append(original);
       }
-      const source=button("이 세션의 원문 대화 읽기",()=>openSession(mindSession));source.disabled=!/^https?:$/.test(location.protocol);actions.append(source);
-      if(liveCatalog)actions.append(button("하단에서 대화 읽기",()=>explorer.openReader(mindSession)));
+      const source=button("이 세션의 원문 읽기",()=>openSession(mindSession));source.disabled=!/^https?:$/.test(location.protocol);actions.append(source);
+      if(liveCatalog)actions.append(button("하단 패널에서 원문 읽기",()=>explorer.openReader(mindSession)));
     }
     }
-    byId("info").textContent=`${{primary:"일반 대화",subagent:"보조 작업",unknown:"분류 미확정"}[catalogKind]} ${catalog.length}개`;
+    byId("info").textContent=`${{primary:"일반 세션",subagent:"보조 작업",unknown:"분류 미확정"}[catalogKind]} ${catalog.length}개`;
     const notice=byId("mind-session-notice");notice.hidden=!session || session.hasAnalysis!==false || mindSessionListOpen;notice.replaceChildren();
     if(!notice.hidden)notice.append(el("span","분석 대기 · 아직 주제와 질문으로 정리되지 않았지만 저장된 원문은 읽을 수 있습니다."),button("원문 읽기",()=>explorer.openReader(session.id)));
     byId("view-info").textContent=qaLoading?"저장된 분석과 원문 근거를 확인하고 있습니다…":(qaFailed?"일부 세션의 분석·원문 순서를 불러오지 못했습니다. 새로고침해 다시 확인해 주세요. ":"")+"실선은 세션·주제 소속과 저장된 답변 관계, 점선은 질문에 저장된 답변 근거를 나타냅니다. 원문 순서가 없는 질문은 순서 미확정으로 표시합니다.";
@@ -1110,7 +1110,7 @@ if(typeof document !== "undefined") (() => {
             content.append(block);
           }
           if(!entry.answers.length) content.append(el("span",entry.answerEvidence.length?`별도 답변 관계 없음 · 아래 저장된 답변 근거 ${entry.answerEvidence.length}개에서 확인하세요.`:"별도 답변 관계와 확인된 답변 근거가 없습니다. 원문 대화에서 확인하세요.","qa-missing"));
-          content.append(el("span",entry.anchor?(live?"이 질문과 앞뒤 원문 대화 읽기 →":"분석·근거 보기 · 원문 이어 읽기는 수집기 주소에서 사용"):"사용자 원문 위치를 확인할 수 없습니다.","qa-read"));
+          content.append(el("span",entry.anchor?(live?"이 질문의 앞뒤 원문 읽기 →":"분석·근거 보기 · 원문 이어 읽기는 수집기 주소에서 사용"):"사용자 원문 위치를 확인할 수 없습니다.","qa-read"));
           row.append(content,button("분석·근거 보기",()=>choose(question.id,entry.source),"qa-details"));
           const editors=el("div","","qa-title-actions");
           editors.append(button("질문 표시 제목 수정",()=>openItemTitleEditor(itemTitleTarget(question,entry.source,"질문")),"item-title-trigger"));
@@ -1124,7 +1124,7 @@ if(typeof document !== "undefined") (() => {
       fragment.append(section);
       }
     }
-    if(!total) fragment.append(el("p",selection.session?.hasAnalysis===false ? "이 세션은 아직 분석하지 않아 저장된 주제·질문·답변이 없습니다. 위의 원문 대화 읽기로 기록을 확인할 수 있습니다." : "선택한 세션·주제에서 조건에 맞는 질문이 없습니다. 다른 주제를 선택하거나 검색어를 지워 주세요.","empty"));
+    if(!total) fragment.append(el("p",selection.session?.hasAnalysis===false ? "이 세션은 아직 분석하지 않아 저장된 주제·질문·답변이 없습니다. 위의 원문 읽기로 기록을 확인할 수 있습니다." : "선택한 세션·주제에서 조건에 맞는 질문이 없습니다. 다른 주제를 선택하거나 검색어를 지워 주세요.","empty"));
     host.replaceChildren(fragment);
     if(qaReturn) {
       const row=[...host.querySelectorAll(".qa-row")].find(row=>row.dataset.questionId===qaReturn.node && row.dataset.sessionId===qaReturn.session);
@@ -1144,7 +1144,7 @@ if(typeof document !== "undefined") (() => {
     const provenances=node.provenance || [];
     for(const provenance of provenances) {
       if(/^https?:$/.test(location.protocol) && provenance.source_node) {
-        const control=button("원문 대화 읽기",()=>openSource(provenance,control),"source-open");
+        const control=button("원문 읽기",()=>openSource(provenance,control),"source-open");
         panel.append(control);
       }
     }

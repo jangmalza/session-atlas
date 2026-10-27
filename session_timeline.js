@@ -44,7 +44,7 @@
     rememberScope();
   }
   function scopeControls() {
-    const labels={primary:"일반 대화",subagent:"보조 작업",unknown:"분류 미확정"};
+    const labels={primary:"일반 세션",subagent:"보조 작업",unknown:"분류 미확정"};
     function options(control,choices,value) {
       const signature=JSON.stringify(choices);
       if(control.dataset.options!==signature) {
@@ -60,7 +60,7 @@
     if(!groups.has(sessionParentFilter)) sessionParentFilter=groups.keys().next().value || "";
     options(byId("session-parent"),[...groups].map(([key,count])=>{
       const parent=sessions.find(item=>item.id===key);
-      return [key,`${parent?.displayTitle || parent?.title || (key==="unknown-parent"?"상위 대화 미확정":"수집되지 않은 상위 대화 · "+key.slice(0,8))} · ${count}개`];
+      return [key,`${parent?.displayTitle || parent?.title || (key==="unknown-parent"?"상위 세션 미확정":"수집되지 않은 상위 세션 · "+key.slice(0,8))} · ${count}개`];
     }),sessionParentFilter);
     byId("session-parent").disabled=!groups.size;
     byId("session-parent-filter").hidden=sessionKindFilter!=="subagent";
@@ -247,7 +247,7 @@
         el("span", `메시지 ${number.format(session.messageCount)}개 · ${session.hasAnalysis ? "분석 " + number.format(session.analysisItemCount) + "개" : "분석 대기"}`, "muted"),
         el("time", time(session.lastMessageAt), "muted"));
       const helpers=sessions.filter(item=>sessionKind(item)==="subagent" && parentKey(item)===session.id).length;
-      if(sessionKind(session)==="primary" && helpers) button.append(el("span",`보조 작업 ${helpers}개 · 대화 종류에서 확인`,"muted"));
+      if(sessionKind(session)==="primary" && helpers) button.append(el("span",`보조 작업 ${helpers}개 · 세션 종류에서 확인`,"muted"));
       button.addEventListener("click", () => choose(session.id).catch(showError));
       fragment.append(button);
     }
@@ -306,7 +306,7 @@
       raw.append(identifiers);
       article.append(raw);
       const statusText = {linked: `이 메시지에서 정리한 내용 ${message.analysisNodeIds.length}개`, analysed: "",
-        pending: "분석 대기", unconfirmed: "분석 범위 미확정"}[message.analysisState];
+        pending: "", unconfirmed: "분석 범위 미확정"}[message.analysisState];
       if (statusText) article.append(el("p", statusText, "message-state " + message.analysisState));
       const links = el("div", "", "analysis-links");
       for (const id of message.analysisNodeIds) {
@@ -433,9 +433,16 @@
     if (changed && view === "analysis") renderOverview();
     if (selectedNode) showAnalysis(selectedNode);
     else if (unplacedMode) showUnplaced();
-    state("자동 갱신 중 · 모델 자동 분석 꺼짐");
+    state("자동 갱신 중");
+  }
+  const narrow = typeof window.matchMedia === "function" ? window.matchMedia("(max-width: 900px)") : {matches: false};
+  function setSessionsHidden(hidden) {
+    document.body.classList.toggle("sessions-hidden", hidden);
+    byId("toggle-sessions").textContent = hidden ? "세션 목록 보이기" : "세션 목록 숨기기";
+    byId("toggle-sessions").setAttribute("aria-expanded", String(!hidden));
   }
   async function choose(sid, targetMessage = "") {
+    if (narrow.matches && sid) { setSessionsHidden(true); byId("conversation-title").scrollIntoView?.({block: "start"}); }
     persistReading();
     ++requestSerial;
     selected = sid;
@@ -514,9 +521,8 @@
   byId("close-analysis").addEventListener("click", closeDetail);
   document.addEventListener("keydown", event => { if (event.key === "Escape") closeDetail(); });
   byId("toggle-sessions").addEventListener("click", () => {
-    const hidden = document.body.classList.toggle("sessions-hidden");
-    byId("toggle-sessions").textContent = hidden ? "세션 목록 보이기" : "세션 목록 숨기기";
-    byId("toggle-sessions").setAttribute("aria-expanded", String(!hidden));
+    const hidden = !document.body.classList.contains("sessions-hidden");
+    setSessionsHidden(hidden);
   });
   function readingSize(value) {
     const size = ["normal", "large", "largest"].includes(value) ? value : "normal";
@@ -548,9 +554,9 @@
         }
         statusKey = key;
       }
-      if (status.state === "error" || status.state === "warning") state("수집 상태 확인 필요 · 마지막 표시 유지", true);
-      else if(status.collector?.state==='stopped')state('수집기 응답 없음 · 저장된 기록을 표시합니다',true);
-      else state("자동 갱신 중 · 모델 자동 분석 꺼짐");
+      if (status.state === "error" || status.state === "warning") state("수집 상태 확인 필요 · 마지막 기록 표시", true);
+      else if(status.collector?.state==='stopped')state('수집기 멈춤 · 마지막 기록 표시',true);
+      else state("자동 갱신 중");
     } catch (_) { showError(); }
     finally { setTimeout(poll, 2000); }
   }

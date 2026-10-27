@@ -16,6 +16,7 @@ header{position:relative;z-index:12}
 .metrics div{display:flex;align-items:baseline;gap:6px}
 .metrics strong{font:14px/1.3 var(--mono);font-variant-numeric:tabular-nums}
 .metrics span{font-size:11px;color:var(--muted)}
+.policy-note{grid-column:1/-1;margin:4px 0 0;font-size:11px;line-height:1.6;color:var(--muted)}
 .explanation{display:none}
 nav{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 22px;background:var(--panel);border-bottom:1px solid var(--line)}
 .views{display:flex;gap:3px}
@@ -34,7 +35,9 @@ iframe{width:100%;height:100%;border:0;display:block}
  header{padding:9px 12px}.heading{gap:7px}.brand{gap:7px}.brand svg{width:32px}h1{font-size:12px}.brand-caption{display:none}
  .ui-theme{margin-left:auto}.ui-theme select{font-size:11px;padding:4px;max-width:98px}
  .metrics{gap:5px 12px}.metrics strong{font-size:12px}.metrics span{font-size:9px}
- #collector-state,.model-policy{font-size:9px}
+ #collector-state,.model-policy{font-size:10px}
+ .brand{margin-right:0}#collector-state{margin-left:auto}
+ .ui-theme{margin-left:0}.collection-stats{margin-left:auto}
  nav{padding:0 10px;gap:5px;flex-wrap:wrap}button{font-size:12px;padding:9px 8px}
- #last-checked{padding:0 0 6px}
+ #last-checked{display:none}
 }

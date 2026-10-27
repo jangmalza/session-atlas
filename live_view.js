@@ -1,7 +1,7 @@
 (() => {
   "use strict";
   const frame = document.getElementById("live-frame");
-  const viewLabels={graph:"대화 탐색",map:"주제 연결 지도",timeline:"원문·검색"};
+  const viewLabels={graph:"세션 탐색",map:"주제 연결 지도",timeline:"원문 읽기·검색"};
   for(const button of document.querySelectorAll("nav button[data-view]")) button.textContent=viewLabels[button.dataset.view];
   const mapNotice=document.createElement("section");mapNotice.id="map-context";mapNotice.hidden=true;
   const noticeTitle=document.createElement("strong");noticeTitle.textContent="주제 연결 지도 · 저장된 분석";
@@ -93,13 +93,13 @@
       document.querySelector('[data-testid="'+name+'"]').textContent = number.format(status[field] || 0);
     }
     stateLabel.dataset.state = status.state;
-    stateLabel.textContent = status.state === "watching" ? "자동 수집 중" : status.state === "warning" ? "수집 중 · 일부 파일 확인 필요" :
-      status.state === "error" ? "갱신 실패 · 마지막 결과 표시 중" : "수집 준비 중";
-    if (status.readOnlyViewer && status.state === "watching") stateLabel.textContent = "대화 기록 표시 중";
-    if(status.collector?.state==='running')stateLabel.textContent='자동 수집 정상 · 저장 기록 표시 중';
-    else if(status.collector?.state==='stopped'){stateLabel.textContent='수집기 응답 없음 · 저장 기록 표시 중';stateLabel.dataset.state='warning';}
-    else if(status.collector?.state==='warning'){stateLabel.textContent='수집 중 · 일부 기록 확인 필요';stateLabel.dataset.state='warning';}
-    else if(status.readOnlyViewer && status.state==='watching')stateLabel.textContent='수집기 상태 미확인 · 저장 기록 표시 중';
+    stateLabel.textContent = status.state === "watching" ? "자동 수집 중" : status.state === "warning" ? "일부 파일을 읽지 못함" :
+      status.state === "error" ? "갱신 실패 · 마지막 결과 표시" : "수집 준비 중";
+    if (status.readOnlyViewer && status.state === "watching") stateLabel.textContent = "저장된 기록 보기";
+    if(status.collector?.state==='running')stateLabel.textContent='자동 수집 중';
+    else if(status.collector?.state==='stopped'){stateLabel.textContent='수집기 멈춤 · 마지막 기록 표시';stateLabel.dataset.state='warning';}
+    else if(status.collector?.state==='warning'){stateLabel.textContent='일부 기록을 읽지 못함';stateLabel.dataset.state='warning';}
+    else if(status.readOnlyViewer && status.state==='watching')stateLabel.textContent='저장된 기록 보기';
     const date = new Date(status.lastCheckedUtc);
     document.getElementById("last-checked").textContent = Number.isFinite(date.getTime()) ? "마지막 확인: " + time.format(date) : "첫 수집을 기다리고 있습니다.";
     show();
@@ -137,7 +137,7 @@
   });
   paint(status);
   if (location.protocol !== "http:" && location.protocol !== "https:") {
-    stateLabel.textContent = "저장된 화면 · 자동 갱신은 수집기 주소에서 사용";
+    stateLabel.textContent = "저장된 화면 · 갱신 없음";
     return;
   }
   async function poll() {
@@ -147,7 +147,7 @@
       paint(await response.json(), true);
     } catch (_) {
       stateLabel.dataset.state = "error";
-      stateLabel.textContent = "연결 끊김 · 마지막 수집 결과 표시 중";
+      stateLabel.textContent = "연결 끊김 · 마지막 결과 표시";
     } finally {
       setTimeout(poll, 1500);
     }
