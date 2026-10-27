@@ -13,6 +13,7 @@ from unittest.mock import patch
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 
+import analysis_pipeline as ap
 import context_graph as cg
 from analysis_control import AnalysisControl, ControlError, read_json, write_json
 from analysis_credentials import WindowsCredentials
@@ -55,7 +56,7 @@ class ControlTests(unittest.TestCase):
         write_json(self.controller.root/'codex-status.json',{'status':'ready','at':1})
         self.addCleanup(patch.stopall)
         patch('analysis_control.shutil.which',return_value='synthetic-executable').start()
-        patch.object(cg,'find_conversation_map',return_value=(self.root/'cm.mjs',self.root/'schema.json')).start()
+        patch.object(ap,'find_conversation_map',return_value=(self.root/'cm.mjs',self.root/'schema.json')).start()
         patch.dict(os.environ,{'OPENAI_API_KEY':''}).start()
         patch('decisions_topics.request_decisions',side_effect=AssertionError('External API forbidden')).start()
 
@@ -127,7 +128,7 @@ class ControlTests(unittest.TestCase):
         self.assertFalse((self.controller.root/job['id']/'work.db').exists())
         other=AnalysisControl(self.database,self.home,credentials=self.credentials)
         self.assertEqual(other.status()['state'],'completed')
-        with patch.object(cg,'auto_analyze',side_effect=AssertionError('Must not retry')):
+        with patch.object(ap,'auto_analyze',side_effect=AssertionError('Must not retry')):
             other.execute(job['id'])
         self.assertEqual(self.rows(),after)
 
@@ -155,7 +156,7 @@ class ControlTests(unittest.TestCase):
         job=self.controller.submit(self.arguments(OTHER,'decisions'),self.graph)
         called=[]
         def classify(con,sid,out):called.append(sid)
-        with patch.object(cg,'auto_analyze',side_effect=AssertionError('Codex forbidden')):
+        with patch.object(ap,'auto_analyze',side_effect=AssertionError('Codex forbidden')):
             self.controller.execute(job['id'],classifier=classify)
         self.assertEqual(called,[OTHER]);self.assertEqual(self.rows(),before)
 

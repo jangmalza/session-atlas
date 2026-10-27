@@ -9,6 +9,7 @@ import tempfile
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import analysis_pipeline as ap
 import context_graph as cg
 
 SID = '01234567-89ab-4def-8234-0123456789ab'
@@ -94,7 +95,7 @@ class WindowsEncodingTests(unittest.TestCase):
 
                 with patch.object(cg.shutil, 'which', side_effect={'codex': codex_executable, 'node': 'node'}.get), \
                      patch.object(cg.subprocess, 'run', side_effect=fake_run):
-                    result = cg.auto_analyze(con, SID, cm, home)
+                    result = ap.auto_analyze(con, SID, cm, home)
                 self.assertIn('analyzed & imported', result)
                 self.assertEqual([x[0] for x in actions], [codex_executable, 'node', 'node'])
                 self.assertEqual(con.execute('select count(*) from session_maps').fetchone()[0], 1)

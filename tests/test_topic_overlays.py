@@ -11,6 +11,7 @@ from urllib.parse import urlencode
 from urllib.request import urlopen
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import analysis_pipeline as ap
 import context_graph as cg
 from decisions_topics import map_fingerprint
 from live_dashboard import LiveDashboard, embedded_json
@@ -191,7 +192,7 @@ class TopicOverlayStorageTests(unittest.TestCase):
         dashboard = LiveDashboard(self.root / 'live', self.database, 0)
         self.addCleanup(dashboard.close)
         before = self.source_rows()
-        with patch.object(cg, 'auto_analyze', side_effect=AssertionError('Models forbidden')), \
+        with patch.object(ap, 'auto_analyze', side_effect=AssertionError('Models forbidden')), \
              patch('decisions_topics.request_decisions', side_effect=AssertionError('API forbidden')):
             cg.publish_dashboard(self.con, dashboard)
             dashboard.start()

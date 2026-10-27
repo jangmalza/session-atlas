@@ -210,3 +210,43 @@ svg .node-kind,svg .edge-label{font-size:11px}
  .qa-open{padding:17px}
  .right{padding:0 18px 20px}
 }
+
+/* Density and readability pass: content first, fewer stacked control rows, no text below 11px. */
+.viewer-header{padding:16px 26px 12px}
+:root[data-embedded=true] .viewer-header{display:none}
+.controls{padding:10px 26px;gap:8px}
+#totals{margin-left:auto;font:11px/1.6 var(--mono);color:var(--muted);white-space:nowrap}
+.scope-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px 18px;padding:9px 0;border-bottom:1px solid var(--line)}
+.scope-row>.catalog-scope{flex:1 1 320px;margin:0;padding:0;border:0}
+.scope-row>.explorer-toolbar{margin-left:auto}
+#session-mindmap:has(#mind-canvas.session-picker-open) .mind-help>.hint{display:none}
+.mind-help{padding:6px 0 4px}
+#mind-selection{padding:8px 0 10px}
+.hint,#info,#page-info,#neighbors-info,#view-info{font-size:13px}
+.reader-nav button,.reader-nav .auxiliary-view-menu>summary{font-size:14px}
+.catalog-scope label{font-size:13px}
+.catalog-scope select{font-size:13px;padding:6px 9px}
+.context-help summary,.mind-help summary{font-size:12px}
+.mind-stage-nav button{font-size:13px}
+.mind-column:before{font-size:11px}
+.mind-meta{font-size:12px}
+.mind-activity{font-size:11px}
+.mind-column .paging .hint{font-size:11px}
+.mind-answer-group{font-size:11px}
+.session-preview-label{font-size:11px}
+#mind-selection .breadcrumb-label,.mind-selection-note{font-size:11px}
+.topic-editor button,.item-title-action button,.item-title-trigger,.topic-groups button{font-size:12px}
+.topic-editor p,.node-management-content p{font-size:12px}
+.qa-selectors label>span,#qa-session-meta,#qa-session-raw{font-size:13px}
+@media(max-width:700px){
+ .viewer-header{padding:12px 16px 10px;gap:8px}
+ .viewer-header p{display:none}
+ h1{font-size:22px;margin:2px 0 4px}
+ .header-notes{display:flex;align-items:center;gap:10px}
+ .controls{padding:8px 12px}
+ #totals{flex-basis:100%;order:3;white-space:normal;font-size:10px}
+ .scope-row{gap:6px 10px;padding:8px 0}
+ .scope-row>.catalog-scope{flex-basis:100%}
+ .scope-row>.explorer-toolbar{margin-left:0}
+ .mind-help{padding:4px 0}
+}

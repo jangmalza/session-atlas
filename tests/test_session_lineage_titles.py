@@ -10,6 +10,7 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import analysis_pipeline as ap
 import context_graph as cg
 from live_dashboard import LiveDashboard
 from session_timeline import TimelineReader
@@ -267,7 +268,7 @@ class SessionLineageTitleTests(unittest.TestCase):
         with self.con:
             self.con.execute("INSERT INTO session_maps VALUES (?,?,?,?)", (CHILD, "", json.dumps(analysis), "now"))
         before = self.tables()
-        with patch.object(cg, "auto_analyze", side_effect=AssertionError("Model forbidden")), \
+        with patch.object(ap, "auto_analyze", side_effect=AssertionError("Model forbidden")), \
              patch.object(cg.subprocess, "run", side_effect=AssertionError("External process forbidden")), \
              patch("socket.create_connection", side_effect=AssertionError("API forbidden")):
             view = self.reader.read(CHILD)

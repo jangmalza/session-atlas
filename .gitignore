@@ -20,3 +20,6 @@ playwright-report/
 *.jsonl.zst
 *.zip
 *.analysis-control/
+
+# Local editor/assistant configuration
+.claude/

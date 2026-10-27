@@ -7,6 +7,7 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import analysis_pipeline as ap
 import context_graph as cg
 
 SID = "01234567-89ab-4def-8234-0123456789ab"
@@ -18,7 +19,7 @@ class ChunkTests(unittest.TestCase):
             {"id": f"m{i}", "role": "user", "content": f"Message {i} " + "x" * 2300}
             for i in range(82)
         ]}
-        chunks = cg.split_transcript(original, 60000)
+        chunks = ap.split_transcript(original, 60000)
         self.assertGreaterEqual(len(chunks), 4)
         self.assertTrue(all(len(cg.serialize_transcript(chunk)) <= 60000 for chunk in chunks))
         self.assertEqual([m for chunk in chunks for m in chunk["messages"]], original["messages"])
@@ -29,7 +30,7 @@ class ChunkTests(unittest.TestCase):
             {"id": "m1", "role": "user", "content": text},
             {"id": "m2", "role": "assistant", "content": "Finished"}
         ]}
-        chunks = cg.split_transcript(original, 60000)
+        chunks = ap.split_transcript(original, 60000)
         messages = [m for chunk in chunks for m in chunk["messages"]]
         self.assertTrue(all(len(cg.serialize_transcript(c)) <= 60000 for c in chunks))
         self.assertEqual("".join(m["content"] for m in messages if m["id"] == "m1"), text)
@@ -41,8 +42,8 @@ class ChunkTests(unittest.TestCase):
             {"key": "one", "kind": "item", "parent": "topic", "supersededBy": "two"},
             {"key": "two", "kind": "item", "parent": "topic"},
         ], "relations": [{"from": "two", "to": "one", "type": "supersedes"}]}
-        first = cg.namespace_chunk_draft(draft, 1)
-        second = cg.namespace_chunk_draft(draft, 2)
+        first = ap.namespace_chunk_draft(draft, 1)
+        second = ap.namespace_chunk_draft(draft, 2)
         self.assertTrue(set(n["key"] for n in first["nodes"]).isdisjoint(
             n["key"] for n in second["nodes"]))
         self.assertEqual(first["nodes"][1]["parent"], first["nodes"][0]["key"])
@@ -101,12 +102,12 @@ class ChunkTests(unittest.TestCase):
                     return type("Process", (), {"returncode": 0, "stderr": "", "stdout": ""})()
 
                 with patch.object(cg.shutil, "which", side_effect=lambda name: name), patch.object(cg.subprocess, "run", side_effect=fake_run):
-                    result = cg.auto_analyze(con, SID, skill.parents[3], root)
+                    result = ap.auto_analyze(con, SID, skill.parents[3], root)
                     self.assertIn("chunk(s)", result)
                     self.assertGreaterEqual(len(chunks), 4)
                     self.assertEqual(len(chunks), len(check_count))
                     self.assertEqual([m for c in chunks for m in c["messages"]], cg.transcript(con, SID)["messages"])
-                    self.assertEqual(cg.auto_analyze(con, SID, skill.parents[3], root), "skipped: unchanged")
+                    self.assertEqual(ap.auto_analyze(con, SID, skill.parents[3], root), "skipped: unchanged")
                 self.assertEqual(con.execute("SELECT count(*) FROM session_maps").fetchone()[0], 1)
             finally:
                 con.close()
@@ -137,7 +138,7 @@ class ChunkTests(unittest.TestCase):
                     return type("Process", (), {"returncode": 0, "stderr": "", "stdout": ""})()
                 with patch.object(cg.shutil, "which", side_effect=lambda name: name), patch.object(cg.subprocess, "run", side_effect=fake_run):
                     with self.assertRaisesRegex(RuntimeError, "chunk 2/"):
-                        cg.auto_analyze(con, SID, skill.parents[3], root)
+                        ap.auto_analyze(con, SID, skill.parents[3], root)
                 self.assertEqual(con.execute("SELECT count(*) FROM session_maps").fetchone()[0], 0)
             finally:
                 con.close()

@@ -7,6 +7,7 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import analysis_pipeline as ap
 import context_graph as cg
 from session_timeline import TimelineReader
 
@@ -47,7 +48,7 @@ class MessageDedupTests(unittest.TestCase):
                  text="First response", role="assistant")
         self.add("repeat", "event_msg", "2026-10-20T00:01:00Z", offset=300)
         before = self.rows()
-        with patch.object(cg, "auto_analyze", side_effect=AssertionError("Models forbidden")), \
+        with patch.object(ap, "auto_analyze", side_effect=AssertionError("Models forbidden")), \
                 patch.object(cg.subprocess, "run", side_effect=AssertionError("Processes forbidden")):
             self.assertEqual(self.ids(), ["first", "answer", "repeat"])
             self.assertEqual([message["content"] for message in cg.transcript(self.db, SID)["messages"]],

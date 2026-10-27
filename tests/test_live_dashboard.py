@@ -12,6 +12,7 @@ from urllib.request import Request, urlopen
 from contextlib import redirect_stderr
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+import analysis_pipeline as ap
 import context_graph as cg
 from live_dashboard import LiveDashboard, atomic_write, embedded_json, load_graph
 
@@ -65,7 +66,7 @@ class LiveDashboardTests(unittest.TestCase):
         live=self.dashboard()
         original_map=self.db.execute('SELECT * FROM session_maps').fetchone()
         original_messages={r['id']:tuple(r) for r in self.db.execute('SELECT * FROM messages')}
-        with patch.object(cg,'auto_analyze',side_effect=AssertionError('Model forbidden')) as model, \
+        with patch.object(ap,'auto_analyze',side_effect=AssertionError('Model forbidden')) as model, \
              patch.object(cg.subprocess,'run',side_effect=AssertionError('External processes forbidden')):
             cg.watch_tick(self.db,self.home,dashboard=live)
             first=(live.directory/'graph.html').read_bytes()
@@ -97,7 +98,7 @@ class LiveDashboardTests(unittest.TestCase):
                                  'classification':'fact','status':'none','evidence':[]})
         revised['relations'].append({'id':'r2','from':'new-fact','to':'choice','type':'supports'})
         self.save_map(revised)
-        with patch.object(cg,'auto_analyze',side_effect=AssertionError('Model forbidden')):
+        with patch.object(ap,'auto_analyze',side_effect=AssertionError('Model forbidden')):
             cg.watch_tick(self.db,self.home,dashboard=live)
         updated=load_graph(live.directory/'graph.html')
         self.assertTrue({n['id'] for n in initial['nodes']} <= {n['id'] for n in updated['nodes']})
@@ -128,7 +129,7 @@ class LiveDashboardTests(unittest.TestCase):
         revised['relations'][0]['type']='answers'
         self.save_map(revised)
         live=self.dashboard()
-        with patch.object(cg,'auto_analyze',side_effect=AssertionError('Models forbidden')):
+        with patch.object(ap,'auto_analyze',side_effect=AssertionError('Models forbidden')):
             cg.watch_tick(self.db,self.home,dashboard=live)
         document=(live.directory/'graph.html').read_text(encoding='utf-8')
         context=embedded_json(document,'qa-context')
@@ -157,7 +158,7 @@ class LiveDashboardTests(unittest.TestCase):
 
     def test_legacy_watch_analysis_flags_are_rejected_before_creating_a_database(self):
         target=self.root/'must-not-exist.db'
-        with patch.object(cg,'auto_analyze',side_effect=AssertionError('Model forbidden')), redirect_stderr(io.StringIO()):
+        with patch.object(ap,'auto_analyze',side_effect=AssertionError('Model forbidden')), redirect_stderr(io.StringIO()):
             self.assertEqual(cg.main(['--db',str(target),'watch','--analyze','--allow-model']),2)
         self.assertFalse(target.exists())
 

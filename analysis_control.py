@@ -13,6 +13,7 @@ import threading
 import time
 import uuid
 
+import analysis_pipeline as ap
 from analysis_credentials import WindowsCredentials
 from topic_display import _locked_preferences
 
@@ -105,11 +106,10 @@ class AnalysisControl:
     def config(self):
         value = read_json(self.root / 'settings.json')
         if not value.get('cmRoot'):
-            import context_graph as cg
             for path in (Path.home() / 'src/conversation-map', Path.home() / 'conversation-map',
                          Path(__file__).resolve().parent.parent / 'conversation-map'):
                 try:
-                    cg.find_conversation_map(path)
+                    ap.find_conversation_map(path)
                     value['cmRoot'] = str(path.resolve())
                     break
                 except ValueError:
@@ -117,10 +117,9 @@ class AnalysisControl:
         return value
 
     def settings(self):
-        import context_graph as cg
         config = self.config()
         try:
-            cg.find_conversation_map(Path(config.get('cmRoot', '')))
+            ap.find_conversation_map(Path(config.get('cmRoot', '')))
             cm_ready = bool(config.get('cmRoot'))
         except ValueError:
             cm_ready = False
@@ -147,9 +146,8 @@ class AnalysisControl:
                 value = arguments['cmRoot']
                 if not isinstance(value, str) or not 1 <= len(value) <= 2048 or not Path(value).is_absolute():
                     raise ControlError('invalid_cm_root')
-                import context_graph as cg
                 try:
-                    cg.find_conversation_map(Path(value))
+                    ap.find_conversation_map(Path(value))
                 except ValueError:
                     raise ControlError('invalid_cm_root') from None
                 write_json(self.root / 'settings.json', {'cmRoot': str(Path(value).resolve())})
@@ -322,7 +320,7 @@ class AnalysisControl:
                     if mode != 'decisions':
                         progress('analyzing')
                         # The saved Decisions key is never injected into Codex's environment.
-                        (analyzer or cg.auto_analyze)(con, session, Path(request['cmRoot']), self.database.parent,
+                        (analyzer or ap.auto_analyze)(con, session, Path(request['cmRoot']), self.database.parent,
                                                      progress=progress)
                     if mode != 'codex':
                         progress('classifying')
@@ -333,7 +331,7 @@ class AnalysisControl:
                             if not key:
                                 raise ControlError('key_required')
                             os.environ['OPENAI_API_KEY'] = key
-                            cg.assign_topics(con, session, self.database.parent, allow_api=True)
+                            ap.assign_topics(con, session, self.database.parent, allow_api=True)
                     saved = con.execute('SELECT * FROM session_maps WHERE session_id=?', (session,)).fetchone()
                     analysis = con.execute('SELECT * FROM analyses WHERE session_id=?', (session,)).fetchone()
                     overlay = con.execute('SELECT * FROM topic_assignments WHERE session_id=?', (session,)).fetchone()

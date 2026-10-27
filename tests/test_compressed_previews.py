@@ -9,6 +9,7 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import analysis_pipeline as ap
 import context_graph as cg
 from session_metadata import SessionMetadataReader, open_rollout
 from session_timeline import TimelineReader
@@ -61,7 +62,7 @@ class CompressedPreviewTests(unittest.TestCase):
 
     def test_verified_compressed_previews_preserve_titles_preferences_and_all_source_rows(self):
         before = self.snapshot(); packed = self.packed.read_bytes(); preferences = self.preferences.read_bytes()
-        with patch.object(cg,'auto_analyze',side_effect=AssertionError('Models forbidden')), \
+        with patch.object(ap,'auto_analyze',side_effect=AssertionError('Models forbidden')), \
              patch.object(cg.subprocess,'run',side_effect=AssertionError('Processes forbidden')), \
              patch('socket.create_connection',side_effect=AssertionError('API forbidden')):
             header = self.header(); offline = self.reader.question_context({SID})[SID]['session']

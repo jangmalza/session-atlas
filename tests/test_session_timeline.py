@@ -13,6 +13,7 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import analysis_pipeline as ap
 import context_graph as cg
 from live_dashboard import LiveDashboard, embedded_json
 from decisions_topics import map_fingerprint
@@ -69,7 +70,7 @@ class SessionTimelineTests(unittest.TestCase):
 
     def test_existing_analysis_is_joined_to_raw_messages_without_models_or_mutations(self):
         before = self.unchanged_tables()
-        with patch.object(cg, 'auto_analyze', side_effect=AssertionError('Models forbidden')), \
+        with patch.object(ap, 'auto_analyze', side_effect=AssertionError('Models forbidden')), \
              patch.object(cg.subprocess, 'run', side_effect=AssertionError('Processes forbidden')):
             catalog = self.reader.read()
             view = self.reader.read(SID)
@@ -100,7 +101,7 @@ class SessionTimelineTests(unittest.TestCase):
 
     def test_question_context_is_read_only_metadata_without_original_text_or_quotes(self):
         before = self.unchanged_tables()
-        with patch.object(cg, 'auto_analyze', side_effect=AssertionError('Models forbidden')):
+        with patch.object(ap, 'auto_analyze', side_effect=AssertionError('Models forbidden')):
             context = self.reader.question_context({SID})
         self.assertEqual(set(context), {SID})
         self.assertEqual(context[SID]['analysis']['anchors'], self.reader.read(SID)['analysis']['anchors'])
@@ -142,7 +143,7 @@ class SessionTimelineTests(unittest.TestCase):
         self.append('user', request, 50)
         cg.scan(self.db, self.home)
         before=self.unchanged_tables()
-        with patch.object(cg, 'auto_analyze', side_effect=AssertionError('Models forbidden')):
+        with patch.object(ap, 'auto_analyze', side_effect=AssertionError('Models forbidden')):
             view=self.reader.read(SID, 0, 100)
             offline=self.reader.question_context({SID})[SID]
         self.assertEqual([m['hasUserContent'] for m in view['messages']], [True,False,False,False,True])
@@ -169,7 +170,7 @@ class SessionTimelineTests(unittest.TestCase):
             'schemaVersion':'topic-display-1','sessions':{SID:{
                 'sourceMapSha256':map_fingerprint(analysis),'auxiliaryTopicIds':['reviewed-topic'],
                 'displayNames':{'reviewed-topic':'</script><img src=x> 표시 이름'}}}}),encoding='utf-8')
-        with patch.object(cg,'auto_analyze',side_effect=AssertionError('Models forbidden')):
+        with patch.object(ap,'auto_analyze',side_effect=AssertionError('Models forbidden')):
             updated=self.reader.read(SID)
             cg.publish_dashboard(self.db,dashboard)
         structure=updated['analysis']['structure']
@@ -194,7 +195,7 @@ class SessionTimelineTests(unittest.TestCase):
         cg.publish_dashboard(self.db,dashboard)
         original_html=(dashboard.directory/'graph.html').read_text(encoding='utf-8')
         revision=dashboard.status()['graphRevision']
-        with patch.object(cg,'auto_analyze',side_effect=AssertionError('Models forbidden')):
+        with patch.object(ap,'auto_analyze',side_effect=AssertionError('Models forbidden')):
             set_session_display(self.db_file,session=SID,display_name='읽기용 세션 이름',expected_revision=display_revision(None))
             renamed=self.reader.read(SID)
             cg.publish_dashboard(self.db,dashboard)
@@ -319,7 +320,7 @@ class SessionTimelineTests(unittest.TestCase):
             return publish(con, dashboard, **kwargs)
         with patch.object(cg, 'scan', side_effect=AssertionError('Collection forbidden')), \
              patch.object(cg, 'connect', side_effect=AssertionError('Write connection forbidden')), \
-             patch.object(cg, 'auto_analyze', side_effect=AssertionError('Models forbidden')), \
+             patch.object(ap, 'auto_analyze', side_effect=AssertionError('Models forbidden')), \
              patch.object(cg, 'publish_dashboard', side_effect=checked_publish), \
              patch.object(cg.time, 'sleep', side_effect=KeyboardInterrupt), \
              patch.object(LiveDashboard, 'start'), \
@@ -335,7 +336,7 @@ class SessionTimelineTests(unittest.TestCase):
         self.append('user', text, 30)
         cg.scan(self.db, self.home)
         before = self.unchanged_tables()
-        with patch.object(cg,'auto_analyze',side_effect=AssertionError('Models forbidden')), \
+        with patch.object(ap,'auto_analyze',side_effect=AssertionError('Models forbidden')), \
              patch.object(cg.subprocess,'run',side_effect=AssertionError('Processes forbidden')):
             for term in ('찾을말', '%_', '[a]', "o'reilly", '<img src=x>'):
                 found = self.reader.search(term)

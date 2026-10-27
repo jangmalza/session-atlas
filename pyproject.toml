@@ -1,0 +1,67 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "session-atlas"
+version = "0.1.0"
+description = "Local-first archive and viewer for Codex CLI and Claude Code conversation transcripts"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+# Standard library only by design: collection and viewing must never pull in
+# network SDKs. Keep this list empty.
+dependencies = []
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Web Environment",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: Microsoft :: Windows",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Text Processing :: Indexing",
+]
+
+[project.urls]
+Repository = "https://github.com/jangmalza/session-atlas"
+
+[project.scripts]
+session-atlas = "context_graph:main"
+session-atlas-runtime = "service_runtime:main"
+
+# The modules live flat in the repository root and locate their HTML/CSS/JS
+# assets with Path(__file__).with_name(...). An editable install
+# (`pip install -e .` or `uv pip install -e .`) keeps that layout intact; a
+# regular wheel would separate the modules from their assets, so the project
+# is not published as a wheel yet.
+[tool.setuptools]
+py-modules = [
+  "analysis_control",
+  "analysis_credentials",
+  "analysis_pipeline",
+  "backup_store",
+  "context_graph",
+  "decisions_topics",
+  "live_dashboard",
+  "localize_map",
+  "question_timeline",
+  "runtime_status",
+  "service_runtime",
+  "session_metadata",
+  "session_timeline",
+  "source_adapters",
+  "topic_display",
+  "topic_overlays",
+  "ui_ko",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+extend-exclude = ["node_modules", "tests/e2e/.e2e-data"]
+
+[tool.ruff.format]
+quote-style = "preserve"

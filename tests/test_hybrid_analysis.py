@@ -12,6 +12,7 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import analysis_pipeline as ap
 import context_graph as cg
 import decisions_topics as dt
 from topic_overlays import read_overlays
@@ -82,7 +83,7 @@ class HybridAnalysisTests(unittest.TestCase):
                ['analyze','--cm-root','unused','--topic-classifier','decisions','--allow-model','--allow-api'],
                ['analyze','--session',SID,'--cm-root','unused','--topic-classifier','decisions','--allow-model','--allow-api','--force']]
         with patch.dict(os.environ,{'OPENAI_API_KEY':'fake-test-key'}),patch.object(cg,'connect') as connect, \
-             patch.object(cg,'auto_analyze') as model,patch.object(dt,'request_decisions') as request, \
+             patch.object(ap,'auto_analyze') as model,patch.object(dt,'request_decisions') as request, \
              redirect_stderr(io.StringIO()):
             for args in cases:self.assertEqual(cg.main(['--db',str(missing),*args]),2)
             connect.assert_not_called();model.assert_not_called();request.assert_not_called()
@@ -91,11 +92,11 @@ class HybridAnalysisTests(unittest.TestCase):
     def test_invalid_threshold_and_missing_key_fail_before_codex(self):
         with patch.dict(os.environ,{'OPENAI_API_KEY':''}),patch.object(cg.subprocess,'run') as model:
             with self.assertRaises(dt.DecisionsError):
-                cg.auto_analyze(self.con,SID,self.root/'cm',self.root,topic_classifier='decisions',allow_api=True)
+                ap.auto_analyze(self.con,SID,self.root/'cm',self.root,topic_classifier='decisions',allow_api=True)
             model.assert_not_called()
         with patch.dict(os.environ,{'OPENAI_API_KEY':'fake-test-key'}),patch.object(cg.subprocess,'run') as model:
             with self.assertRaises(ValueError):
-                cg.auto_analyze(self.con,SID,self.root/'cm',self.root,topic_classifier='decisions',allow_api=True,topic_confidence=float('nan'))
+                ap.auto_analyze(self.con,SID,self.root/'cm',self.root,topic_classifier='decisions',allow_api=True,topic_confidence=float('nan'))
             model.assert_not_called()
 
     def test_existing_analysis_reused_and_only_sidecar_changes(self):
@@ -104,7 +105,7 @@ class HybridAnalysisTests(unittest.TestCase):
              patch.object(cg.shutil,'which',side_effect=AssertionError('No Codex lookup')), \
              patch.object(cg.subprocess,'run',side_effect=AssertionError('No model')), \
              patch.object(dt,'classify_map',side_effect=lambda source,*a,**kw:self.overlay(source)) as classify:
-            result=cg.auto_analyze(self.con,SID,self.root/'unused',self.root,topic_classifier='decisions',allow_api=True)
+            result=ap.auto_analyze(self.con,SID,self.root/'unused',self.root,topic_classifier='decisions',allow_api=True)
         self.assertIn('existing analysis preserved',result);self.assertEqual(classify.call_count,1)
         self.assertEqual(self.tables(),before);self.assertEqual(self.source,map_copy)
         self.assertEqual(read_overlays(self.con)[SID]['assignments'][0]['topicId'],'b')
@@ -115,7 +116,7 @@ class HybridAnalysisTests(unittest.TestCase):
              patch.object(cg.shutil,'which',side_effect=lambda name:name), \
              patch.object(cg.subprocess,'run',side_effect=self.fake_process), \
              patch.object(dt,'classify_map',side_effect=lambda source,*a,**kw:self.overlay(source)):
-            cg.auto_analyze(self.con,SID,self.root/'cm',self.root,topic_classifier='decisions',allow_api=True)
+            ap.auto_analyze(self.con,SID,self.root/'cm',self.root,topic_classifier='decisions',allow_api=True)
         saved=json.loads(self.con.execute('SELECT map_json FROM session_maps').fetchone()[0])
         self.assertEqual(saved,self.source)
         self.assertEqual(self.tables()['messages'],before['messages'])
@@ -129,7 +130,7 @@ class HybridAnalysisTests(unittest.TestCase):
              patch.object(cg.subprocess,'run',side_effect=self.fake_process), \
              patch.object(dt,'classify_map',side_effect=dt.DecisionsError('Synthetic failure')):
             with self.assertRaises(dt.DecisionsError):
-                cg.auto_analyze(self.con,SID,self.root/'cm',self.root,topic_classifier='decisions',allow_api=True)
+                ap.auto_analyze(self.con,SID,self.root/'cm',self.root,topic_classifier='decisions',allow_api=True)
         self.assertEqual(self.tables(),before);self.assertEqual(read_overlays(self.con),{})
 
     def test_store_failure_rolls_back_map_and_analysis_transaction(self):
@@ -140,16 +141,16 @@ class HybridAnalysisTests(unittest.TestCase):
              patch.object(dt,'classify_map',side_effect=lambda source,*a,**kw:self.overlay(source)), \
              patch('topic_overlays.store_overlay',side_effect=RuntimeError('Synthetic save failure')):
             with self.assertRaises(RuntimeError):
-                cg.auto_analyze(self.con,SID,self.root/'cm',self.root,topic_classifier='decisions',allow_api=True)
+                ap.auto_analyze(self.con,SID,self.root/'cm',self.root,topic_classifier='decisions',allow_api=True)
         self.assertEqual(self.tables(),before);self.assertEqual(read_overlays(self.con),{})
 
     def test_failed_reclassification_keeps_prior_overlay_and_original_map(self):
         self.save_source()
         with patch.dict(os.environ,{'OPENAI_API_KEY':'fake-test-key'}),patch.object(dt,'classify_map',side_effect=lambda source,*a,**kw:self.overlay(source)):
-            cg.assign_topics(self.con,SID,self.root,allow_api=True)
+            ap.assign_topics(self.con,SID,self.root,allow_api=True)
         before=self.tables();old=read_overlays(self.con)
         with patch.dict(os.environ,{'OPENAI_API_KEY':'fake-test-key'}),patch.object(dt,'classify_map',side_effect=dt.DecisionsError('Synthetic failure')):
-            with self.assertRaises(dt.DecisionsError):cg.assign_topics(self.con,SID,self.root,allow_api=True)
+            with self.assertRaises(dt.DecisionsError):ap.assign_topics(self.con,SID,self.root,allow_api=True)
         self.assertEqual(self.tables(),before);self.assertEqual(read_overlays(self.con),old)
 
     def test_concurrent_map_change_prevents_applying_stale_assignments(self):
@@ -162,7 +163,7 @@ class HybridAnalysisTests(unittest.TestCase):
             return self.overlay(source)
         with patch.dict(os.environ,{'OPENAI_API_KEY':'fake-test-key'}),patch.object(dt,'classify_map',side_effect=changed):
             with self.assertRaisesRegex(RuntimeError,'changed during classification'):
-                cg.assign_topics(self.con,SID,self.root,allow_api=True)
+                ap.assign_topics(self.con,SID,self.root,allow_api=True)
         self.assertEqual(read_overlays(self.con),{})
 
     def test_assign_command_never_runs_codex(self):
@@ -178,8 +179,8 @@ class HybridAnalysisTests(unittest.TestCase):
             return {'answers':[{'name':question['name'],'type':'choice','choice':'t1','confidence':0.99}
                                for question in payload['questions']]}
         with patch.dict(os.environ,{'OPENAI_API_KEY':'fake-test-key'}),patch.object(dt,'request_decisions',side_effect=reply) as request:
-            cg.assign_topics(self.con,SID,self.root,allow_api=True)
-            cg.assign_topics(self.con,SID,self.root,allow_api=True)
+            ap.assign_topics(self.con,SID,self.root,allow_api=True)
+            ap.assign_topics(self.con,SID,self.root,allow_api=True)
         self.assertEqual(request.call_count,1)
         view=TimelineReader(self.db).read(SID)
         self.assertEqual(next(node for node in view['analysis']['structure'] if node['id']=='q')['parentId'],'b')
@@ -194,7 +195,7 @@ class HybridAnalysisTests(unittest.TestCase):
         self.addCleanup(viewer.close)
         with patch.dict(os.environ,{'OPENAI_API_KEY':'fake-test-key'}), \
              patch.object(dt,'request_decisions',side_effect=AssertionError('API forbidden')) as request, \
-             patch.object(cg,'auto_analyze',side_effect=AssertionError('Codex forbidden')) as model:
+             patch.object(ap,'auto_analyze',side_effect=AssertionError('Codex forbidden')) as model:
             cg.watch_tick(self.con,self.root/'empty-codex',dashboard=viewer)
             cg.publish_dashboard(self.con,viewer,read_only_viewer=True)
             TimelineReader(self.db).read(SID)

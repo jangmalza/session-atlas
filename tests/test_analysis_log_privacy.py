@@ -14,6 +14,7 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import analysis_pipeline as ap
 import context_graph as cg
 
 
@@ -65,7 +66,7 @@ class AnalysisLogPrivacyTests(unittest.TestCase):
                 if classifier == "decisions":
                     args.append("--allow-api")
                 with patch.object(cg.shutil, "which", side_effect=lambda name: name), \
-                     patch.object(cg, "_decision_preflight"), \
+                     patch.object(ap, "_decision_preflight"), \
                      patch.object(cg.subprocess, "run", side_effect=fake_run), \
                      patch("decisions_topics.request_decisions") as api, \
                      redirect_stdout(stdout), redirect_stderr(stderr):
@@ -114,7 +115,7 @@ class AnalysisLogPrivacyTests(unittest.TestCase):
             {"code": PRIVATE, "message": PRIVATE}]}), PRIVATE)
         with patch.object(cg.subprocess, "run", return_value=result):
             try:
-                cg.check_with_attribution_repair(self.script, self.root / "transcript.json", [draft])
+                ap.check_with_attribution_repair(self.script, self.root / "transcript.json", [draft])
             except RuntimeError as error:
                 message = str(error)
                 formatted = traceback.format_exc()
@@ -128,7 +129,7 @@ class AnalysisLogPrivacyTests(unittest.TestCase):
         for error in (ValueError(PRIVATE), KeyError(PRIVATE), TypeError(PRIVATE), OSError(PRIVATE)):
             with self.subTest(error=type(error).__name__):
                 stdout, stderr = io.StringIO(), io.StringIO()
-                with patch.object(cg, "auto_analyze", side_effect=error), \
+                with patch.object(ap, "auto_analyze", side_effect=error), \
                      redirect_stdout(stdout), redirect_stderr(stderr):
                     result = cg.main(["--db", str(self.db), "analyze", "--session", SID,
                                       "--cm-root", str(self.cm), "--allow-model"])

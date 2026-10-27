@@ -11,6 +11,7 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import analysis_pipeline as ap
 import context_graph as cg
 import live_dashboard as ld
 from decisions_topics import map_fingerprint
@@ -117,7 +118,7 @@ class TailscaleHttpTests(unittest.TestCase):
         self.map_file = self.root/'analysis.json'
         self.map_file.write_text(json.dumps(self.analysis), encoding='utf-8')
         cg.import_map(self.db, SID, self.map_file, cg.digest(cg.serialize_transcript(cg.transcript(self.db, SID))))
-        self.enterContext(patch.object(cg, 'auto_analyze', side_effect=AssertionError('Models forbidden')))
+        self.enterContext(patch.object(ap, 'auto_analyze', side_effect=AssertionError('Models forbidden')))
         self.enterContext(patch.object(cg.subprocess, 'run', side_effect=AssertionError('External processes forbidden')))
         self.live = self.dashboard('remote', tailscale_origin=ORIGIN, tailscale_user=USER)
 

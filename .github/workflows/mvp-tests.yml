@@ -2,7 +2,7 @@ name: MVP regression tests
 
 on:
   push:
-    branches: [feat/context-graph-mvp]
+    branches: [main, feat/context-graph-mvp]
   pull_request:
   workflow_dispatch:
 

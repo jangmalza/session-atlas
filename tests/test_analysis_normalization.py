@@ -5,6 +5,7 @@ import sys
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import analysis_pipeline as ap
 import context_graph as cg
 
 
@@ -16,7 +17,7 @@ class AnalysisNormalizationTests(unittest.TestCase):
                         "title": "Keep the original claim", "supersededBy": "replacement",
                         "evidence": [{"message": "m1", "quote": "Original evidence"}]}
                 original = deepcopy(node)
-                normalized = cg.normalize_analysis_output({"nodes": [node], "relations": []})["nodes"][0]
+                normalized = ap.normalize_analysis_output({"nodes": [node], "relations": []})["nodes"][0]
                 self.assertNotIn("supersededBy", normalized)
                 self.assertEqual(normalized["classification"], classification)
                 self.assertEqual(normalized["evidence"], original["evidence"])
@@ -27,7 +28,7 @@ class AnalysisNormalizationTests(unittest.TestCase):
                   "title": "Storage decision", "supersededBy": "replacement"}
                  for classification in ("decision", "superseded_decision")]
         relations = [{"from": "replacement", "to": "decision", "type": "supersedes"}]
-        normalized = cg.normalize_analysis_output({"nodes": nodes, "relations": relations})
+        normalized = ap.normalize_analysis_output({"nodes": nodes, "relations": relations})
         self.assertEqual(normalized["nodes"], nodes)
         self.assertEqual(normalized["relations"], relations)
 

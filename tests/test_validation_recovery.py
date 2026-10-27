@@ -11,6 +11,7 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import analysis_pipeline as ap
 import context_graph as cg
 
 SID = "01234567-89ab-4def-8234-0123456789ab"
@@ -36,7 +37,7 @@ class AttributionRecoveryTests(unittest.TestCase):
                 {"code": "relation-unknown-node", "node": "c1-b",
                  "message": "Invalid relation"},
             ]}
-            self.assertEqual(cg.repair_attribution_errors([file], diagnostic), 1)
+            self.assertEqual(ap.repair_attribution_errors([file], diagnostic), 1)
             fixed = json.loads(file.read_text(encoding="utf-8"))
             self.assertEqual([n["classification"] for n in fixed["nodes"]],
                              ["user_statement", "decision", "user_statement"])
@@ -65,7 +66,7 @@ class AttributionRecoveryTests(unittest.TestCase):
                 return completed(cmd, 0, json.dumps({"ok": True, "errors": [], "warnings": []}))
 
             with patch.object(cg.subprocess, "run", side_effect=fake_run):
-                self.assertEqual(cg.check_with_attribution_repair(temp / "script.mjs", transcript, [draft]), 1)
+                self.assertEqual(ap.check_with_attribution_repair(temp / "script.mjs", transcript, [draft]), 1)
             self.assertEqual(len(attempts), 2)
             self.assertEqual(json.loads(draft.read_text(encoding="utf-8"))["nodes"][0]["classification"], "user_statement")
 
@@ -79,7 +80,7 @@ class AttributionRecoveryTests(unittest.TestCase):
                             "message": "not found"}], "warnings": []}))
             with patch.object(cg.subprocess, "run", side_effect=fake_run):
                 with self.assertRaisesRegex(RuntimeError, "relation-unknown-node"):
-                    cg.check_with_attribution_repair(temp / "script.mjs", temp / "transcript.json", [draft])
+                    ap.check_with_attribution_repair(temp / "script.mjs", temp / "transcript.json", [draft])
 
     def test_cache_drafts_even_when_upstream_check_fails(self):
         with tempfile.TemporaryDirectory() as td:
@@ -143,12 +144,12 @@ class AttributionRecoveryTests(unittest.TestCase):
 
                 with patch.object(cg.shutil, "which", side_effect=lambda name: name), patch.object(cg.subprocess, "run", side_effect=fake_run):
                     with self.assertRaisesRegex(RuntimeError, "relation-unknown-node"):
-                        cg.auto_analyze(con, SID, cm, root)
+                        ap.auto_analyze(con, SID, cm, root)
                     previous_count = model_calls[0]
                     self.assertGreaterEqual(previous_count, 3)
                     self.assertEqual(con.execute("SELECT COUNT(*) FROM session_maps").fetchone()[0], 0)
                     check_should_fail[0] = False
-                    result = cg.auto_analyze(con, SID, cm, root)
+                    result = ap.auto_analyze(con, SID, cm, root)
                     self.assertIn("analyzed & imported", result)
                     self.assertEqual(model_calls[0], previous_count, "retry should not repeat model calls")
                     self.assertGreaterEqual(len(list((root / "analysis-cache").rglob("*.json"))), 3)
