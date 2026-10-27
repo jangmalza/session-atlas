@@ -537,9 +537,9 @@ def render_html(graph: dict, filename: Path, qa_context: dict | None = None) -> 
     labels = json.dumps({"classification": CLASSIFICATION_KO, "status": STATUS_KO,
                          "relation": RELATION_KO}, ensure_ascii=False)
     template = Path(__file__).with_name("graph_view.html").read_text(encoding="utf-8")
-    style = "\n".join(Path(__file__).with_name(name).read_text(encoding="utf-8") for name in ("graph_view.css", "ui_theme.css", "graph_design.css", "explorer_tools.css"))
+    style = "\n".join(Path(__file__).with_name(name).read_text(encoding="utf-8") for name in ("graph_view.css", "ui_theme.css", "graph_design.css", "explorer_tools.css", "mind_tree.css"))
     script = "\n".join(Path(__file__).with_name(name).read_text(encoding="utf-8") for name in
-                       ("ui_theme.js", "explorer_tools.js", "raw_turns.js", "graph_view.js")).replace("__KO_LABELS__", labels)
+                       ("ui_theme.js", "explorer_tools.js", "raw_turns.js", "mind_tree.js", "graph_view.js")).replace("__KO_LABELS__", labels)
     context = json.dumps(qa_context or {}, ensure_ascii=False).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
     # A literal empty metadata script also works with older running collectors.
     template = template.replace('<script type="application/json" id="qa-context">{}</script>',

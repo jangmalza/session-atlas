@@ -1,14 +1,7 @@
 .explorer-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:0}
 .explorer-toolbar button{font-size:13px;padding:7px 11px}
 .explorer-toolbar .hint{margin-left:auto;font-size:11px}
-.mind-column:has(.mind-node[aria-pressed=true]) .mind-node:not([aria-pressed=true]){opacity:.78}
-.mind-node[aria-pressed=true]{box-shadow:0 0 0 1px var(--accent);background:var(--tint)}
-.mind-node .name{font-size:16px;-webkit-line-clamp:2}
 .mind-node:hover,.mind-node:focus-visible{opacity:1!important}
-.mind-edge{opacity:.2;stroke-width:1.2}
-.mind-edge-active{opacity:.9;stroke-width:2.6}
-.mind-evidence-edge.mind-edge-active{opacity:.7;stroke-width:2}
-.raw-chronology .mind-edge{stroke-dasharray:4 4;stroke:var(--muted)}
 .node-management{position:relative;display:inline-block;border:0;padding:0;margin:0;font-size:12px}
 .node-management>summary{list-style:none;cursor:pointer;padding:4px 10px;border:1px solid var(--line);border-radius:3px;font-size:12px;line-height:20px;color:var(--muted);background:var(--panel);white-space:nowrap}
 .node-management>summary::-webkit-details-marker{display:none}
@@ -18,18 +11,11 @@
 .node-management-content button{font-size:12px;margin:4px 0;white-space:normal}
 .node-management-content .topic-name-editor{margin-top:8px}
 .node-management-content p{font-size:11px;overflow-wrap:anywhere}
-#mind-session-editor,#mind-topic-editor,#mind-question-title-action{margin:0 0 8px!important;padding:0!important;border:0!important}
-.answer-title-entry,.answer-evidence-entry{position:relative;padding-bottom:30px}
-.inline-management{position:absolute;bottom:0;right:5px}
-.inline-management .node-management-content{left:auto;right:0}
 .question-stepper{display:flex;align-items:center;justify-content:space-between;gap:6px;margin:0 0 9px}
 .question-stepper button{padding:4px 10px;font-size:16px}
 .question-stepper span{font-size:12px;color:var(--muted);text-align:center}
-#mind-session-notice{padding:12px;border-left:3px solid var(--accent);background:var(--tint);font-size:13px;line-height:1.8;margin:8px 0}
-#mind-session-notice button{margin-left:10px;font-size:12px;padding:5px 9px}
 body.has-source-reader .layout{grid-template-rows:minmax(220px,1fr) minmax(220px,42%);row-gap:10px;padding-bottom:12px}
 body.has-source-reader .layout>main{grid-row:1;grid-column:1/-1}
-body.has-source-reader .mind-column .mind-node-list{max-height:clamp(160px,30vh,360px)}
 #source-reader{grid-row:2;grid-column:1/-1;min-width:0;min-height:0;display:grid;grid-template-rows:auto auto minmax(0,1fr);border:1px solid var(--line);border-top:2px solid var(--accent);border-radius:4px;background:var(--panel);overflow:hidden}
 .reader-panel-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:9px 12px;border-bottom:1px solid var(--line)}
 .reader-panel-head strong{font-size:14px;max-width:55%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
@@ -61,7 +47,6 @@ body.has-source-reader .mind-column .mind-node-list{max-height:clamp(160px,30vh,
 .library-row{display:flex;gap:8px;border-bottom:1px solid var(--line);padding:9px 0;align-items:center}
 .library-row button{font-size:12px;padding:7px;overflow-wrap:anywhere}
 .library-row button:first-child{flex:1;text-align:left}
-@media(max-height:800px){body.has-source-reader .mind-column .mind-node-list{max-height:clamp(130px,24vh,220px)}}
 #explorer-library-items h3{font-size:15px;margin:18px 0 6px}
 @media(max-width:700px){
  .explorer-toolbar{gap:5px}.explorer-toolbar button{font-size:12px;padding:6px 8px}
@@ -72,7 +57,7 @@ body.has-source-reader .mind-column .mind-node-list{max-height:clamp(160px,30vh,
  .library-row{flex-wrap:wrap}.library-row button:first-child{flex-basis:100%}
 }
 
-/* Reader panel reading controls and the three-column layout for sessions without analysis. */
+/* Reader panel reading controls. */
 .reader-panel-head button{margin-left:0}
 .reader-panel-head #source-reader-expand{margin-left:auto}
 .reader-follow,.reader-size{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);white-space:nowrap}
@@ -80,11 +65,4 @@ body.has-source-reader .mind-column .mind-node-list{max-height:clamp(160px,30vh,
 .reader-size select{font-size:12px;padding:4px 6px}
 .reader-original{font-size:var(--reader-size,14px)}
 body.reader-expanded #source-reader{position:fixed;inset:0;z-index:25;border-radius:0;border-width:2px 0 0}
-#mind-canvas.raw-session>.mind-column:has(#mind-topics){display:none}
-#mind-canvas.raw-session{grid-template-columns:minmax(210px,.9fr) minmax(230px,1.05fr) minmax(270px,1.25fr)}
-.mind-stage-nav.raw-session{grid-template-columns:repeat(3,minmax(0,1fr))}
-.mind-stage-nav.raw-session #mind-step-1{display:none}
-#mind-session-notice{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 12px;font-size:12px}
-#mind-session-notice button{margin-left:0}
-@media(max-width:1199px){#mind-canvas.raw-session{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:700px){#mind-canvas.raw-session{grid-template-columns:minmax(0,1fr)}.reader-size{display:none}.reader-follow{font-size:11px}}
+@media(max-width:700px){.reader-size{display:none}.reader-follow{font-size:11px}}

@@ -33,7 +33,7 @@ const SessionAtlasTools = (() => {
     const el=(tag,text="",className="")=>{const e=document.createElement(tag);e.textContent=text;e.className=className;return e;};
     const button=(text,fn)=>{const e=el("button",text);e.type="button";e.addEventListener("click",fn);return e;};
     const title=sid=>{const s=getSessions().find(s=>s.id===sid);return s?.displayTitle||s?.title||"세션을 찾을 수 없습니다";};
-    let selectedSession="",reader=null,serial=0,lastRequest=null,searchSerial=0,searchPage=null,searchQuery="",scrollTimer=0;
+    let selectedSession="",reader=null,serial=0,lastRequest=null,searchSerial=0,searchPage=null,searchQuery="",scrollTimer=0,settledAt=0;
     let pageSize=7,follow=false,followTimer=0,expanded=false;
     const panel=byId("source-reader"),body=byId("source-reader-body");
     const sizes={normal:"14px",large:"17px",largest:"20px"};
@@ -119,6 +119,8 @@ const SessionAtlasTools = (() => {
         byId("source-reader-newer").disabled=value.offset+value.messages.length>=value.total;
         byId("source-reader-latest").disabled=value.offset+value.messages.length>=value.total;
         if(target){nav.remember(session,target.id);updateButtons();}
+        // Centring the target scrolls the panel too; only the reader's own scrolling moves the remembered position.
+        settledAt=Date.now()+400;
         if(scrollToEnd)body.scrollTop=body.scrollHeight;else targetElement?.scrollIntoView({block:"center",behavior:"auto"});
         syncReaderControls();onLayout?.();
         if(follow && !followTimer)followTimer=setTimeout(pollFollow,2000);
@@ -130,7 +132,7 @@ const SessionAtlasTools = (() => {
     }
     body.addEventListener("scroll",()=>{
       clearTimeout(scrollTimer);scrollTimer=setTimeout(()=>{
-        if(!reader||panel.hidden)return;const rect=body.getBoundingClientRect();
+        if(!reader||panel.hidden||Date.now()<settledAt)return;const rect=body.getBoundingClientRect();
         const first=[...body.querySelectorAll(".reader-message")].find(e=>e.getBoundingClientRect().bottom>rect.top+3);
         if(first){nav.remember(reader.session.id,first.dataset.messageId);lastRequest={session:reader.session.id,message:first.dataset.messageId,offset:null};updateButtons();}
       },160);

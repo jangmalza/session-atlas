@@ -59,13 +59,13 @@ The mind map, full-text search and original-message reader work without model ca
 | `question_timeline.py` | Offline question ordering from verified user-message evidence |
 | `localize_map.py` | Korean localization of a built Conversation Map HTML |
 | `ui_ko.py` | Korean labels |
-| `graph_view.html/js/css`, `graph_design.css`, `live_view.js/css`, `explorer_tools.js/css`, `raw_turns.js`, `ui_theme.js/css`, `analysis_ui.html/js/css` | Front-end: mind map, live status, reader panel and search, raw turns, themes and the analysis dialogs |
+| `graph_view.html/js/css`, `graph_design.css`, `mind_tree.js/css`, `live_view.js/css`, `explorer_tools.js/css`, `raw_turns.js`, `ui_theme.js/css`, `analysis_ui.html/js/css` | Front-end: mind map tree and its layout, live status, reader panel and search, raw turns, themes and the analysis dialogs |
 
 ## Development
 
 ```powershell
 python -m unittest discover -s tests                     # Python unit tests
-node --test tests/qa_timeline.test.cjs tests/session_mindmap.test.cjs tests/mindmap_lifecycle.test.cjs tests/explorer_tools.test.cjs
+node --test tests/qa_timeline.test.cjs tests/session_mindmap.test.cjs tests/mind_tree.test.cjs tests/mindmap_lifecycle.test.cjs tests/explorer_tools.test.cjs
 npm ci; npx playwright install chromium; npm run test:e2e   # Playwright E2E
 uvx ruff format <files>                                  # formatting; line length 120 is set in pyproject.toml
 uv pip install -e .                                      # or: pip install -e .

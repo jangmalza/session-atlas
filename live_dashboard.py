@@ -170,7 +170,7 @@ class LiveDashboard:
         self.timeline = TimelineReader(database, codex_home if codex_home is not None else default_codex_home())
         from analysis_control import AnalysisControl
         self.analysis = AnalysisControl(database, codex_home if codex_home is not None else default_codex_home())
-        assets=('graph_view.html','graph_view.js','graph_view.css','graph_design.css','explorer_tools.js','explorer_tools.css','raw_turns.js','ui_theme.js','ui_theme.css','live_view.js','live_view.css')
+        assets=('graph_view.html','graph_view.js','graph_view.css','graph_design.css','explorer_tools.js','explorer_tools.css','raw_turns.js','mind_tree.js','mind_tree.css','ui_theme.js','ui_theme.css','live_view.js','live_view.css')
         self._ui_revision=fingerprint(b''.join(Path(__file__).with_name(name).read_bytes() for name in (*assets,'analysis_ui.html','analysis_ui.js','analysis_ui.css')))
         self._status = {"state": "starting", "autoAnalysis": False, "graphReady": False, "mapReady": False,
                         "analysisRevision": "",

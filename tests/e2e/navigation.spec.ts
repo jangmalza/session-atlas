@@ -6,22 +6,27 @@ test.beforeEach(async({context})=>{
 async function selectQuestion(page:any){
   await page.goto('/?view=graph');const frame=page.frameLocator('#live-frame');
   await frame.locator(`#mind-sessions [data-key="${sid}"]`).click();
-  await frame.locator('#mind-topics .mind-node').first().click();
-  await frame.locator('#mind-questions .mind-node').first().click();
+  await frame.locator('#mind-tree [data-kind="topic"]').first().click();
+  await frame.locator('#mind-tree [data-kind="question"]').first().click();
   await expect(frame.locator('#source-reader .reader-target')).toBeVisible();return frame;
 }
-test('four columns, verified source panel and next question preserve original content',async({page},testInfo)=>{
+test('tree branches, verified source panel and next question preserve original content',async({page},testInfo)=>{
   const frame=await selectQuestion(page);
   await expect(frame.locator('.reader-target .reader-original')).toHaveText('Synthetic question 000 literal <img src=x>.');
   await expect(frame.locator('.reader-target img')).toHaveCount(0);
-  const positions=await frame.locator('#mind-canvas>.mind-column').evaluateAll((es:any[])=>es.map(e=>e.getBoundingClientRect().top));
-  expect(new Set(positions).size).toBe(1);expect(positions.length).toBe(4);
+  const boxes=await frame.locator('#mind-tree .mind-node').evaluateAll((es:any[])=>es.map(e=>({kind:e.dataset.kind,depth:e.dataset.depth,...e.getBoundingClientRect().toJSON()})));
+  const root=boxes.find(b=>b.kind==='session'),topics=boxes.filter(b=>b.kind==='topic'),questions=boxes.filter(b=>b.kind==='question');
+  expect(root.depth).toBe('0');expect(topics.length).toBeGreaterThan(0);expect(questions.length).toBeGreaterThan(1);
+  expect(Math.min(...topics.map(b=>b.left))).toBeGreaterThan(root.right);
+  expect(Math.min(...questions.map(b=>b.left))).toBeGreaterThan(Math.max(...topics.map(b=>b.right)));
+  expect(questions[1].top).toBeGreaterThan(questions[0].bottom-1);
   await frame.locator('#question-next').click();
   await expect(frame.locator('.reader-target .reader-original')).toHaveText('Synthetic question 001 literal <img src=x>.');
   await page.screenshot({path:testInfo.outputPath('verified-source-panel.png')});
   await frame.locator('#source-reader-close').click();
-  await frame.locator('#mind-session-change').click();await frame.locator('#mind-session-change').click();
-  await expect(frame.locator('#mind-questions [aria-pressed="true"] .name')).toHaveText('E2E question 01');
+  await frame.locator('#mind-session-change').click();await expect(frame.locator('#mind-tree-host')).toBeHidden();
+  await frame.locator('#mind-session-change').click();
+  await expect(frame.locator('#mind-tree [data-kind="question"][aria-pressed="true"] .name')).toHaveText('E2E question 01');
   await expect(frame.locator('#mind-links .mind-edge-active')).not.toHaveCount(0);
 });
 test('reader keeps its paging position across a reload and resumes from the saved place',async({page})=>{
@@ -39,7 +44,7 @@ test('search follows stored evidence and bookmarks persist without touching titl
   await frame.locator('#explorer-search').click();await frame.locator('#explorer-search-query').fill('Synthetic question 009');
   await frame.locator('#explorer-search-form button').click();
   await frame.locator('.explorer-result button').filter({hasText:'마인드맵'}).first().click();
-  await expect(frame.locator('#mind-questions [aria-pressed="true"] .name')).toHaveText('E2E question 09');
+  await expect(frame.locator('#mind-tree [data-kind="question"][aria-pressed="true"] .name')).toHaveText('E2E question 09');
   await expect(frame.locator('.reader-target .reader-original')).toContainText('question 009');
   await frame.locator('#explorer-star').click();await page.reload();
   await expect(page.frameLocator('#live-frame').locator('#explorer-star')).toHaveAttribute('aria-pressed','true');
@@ -61,11 +66,15 @@ test('unanalysed conversations show explicit chronological turns without generat
   await page.goto('/?view=graph');const frame=page.frameLocator('#live-frame');
   await frame.locator('#mind-sessions [data-key="22222222-2222-4222-8222-222222222222"]').click();
   await expect(frame.locator('#mind-session-notice')).toContainText('원문 순서 묶음');
-  await frame.locator('#mind-questions [data-kind="raw-request"]').first().click();
-  await expect(frame.locator('#mind-answers [data-kind="raw-response"]')).toHaveCount(1);
+  await expect(frame.locator('#mind-tree [data-kind="raw-group"]')).toHaveCount(2);
+  await expect(frame.locator('#mind-tree [data-kind="raw-group"]').first()).toContainText('요청 1–10');
+  await frame.locator('#mind-tree [data-kind="raw-group"]').first().click();
+  await expect(frame.locator('#mind-tree [data-kind="raw-request"]')).toHaveCount(10);
+  await frame.locator('#mind-tree [data-kind="raw-request"]').first().click();
+  await expect(frame.locator('#mind-tree [data-kind="raw-response"]')).toHaveCount(1);
   await expect(frame.locator('.reader-target .reader-original')).toHaveText('Unanalysed raw message 0');
   for(let i=0;i<8;i++)await frame.locator('#question-next').click();
-  await expect(frame.locator('#mind-questions [aria-pressed="true"]')).toHaveAttribute('data-kind','raw-request');
+  await expect(frame.locator('#mind-tree [data-kind="raw-request"][aria-pressed="true"]')).toHaveCount(1);
   await expect(frame.locator('.reader-target .reader-original')).toHaveText('Unanalysed raw message 16');
   const after=await (await request.get('/status.json')).json();
   expect(after.analysedSessionCount).toBe(before.analysedSessionCount);expect(after.autoAnalysis).toBe(false);
@@ -91,9 +100,9 @@ test('Claude Code sessions share the catalog and source reader without semantic 
   await expect(frame.locator('#mind-sessions .mind-session-node')).toHaveCount(1);
   await expect(frame.locator('#mind-sessions .session-project')).toContainText('Claude Code');
   await frame.locator('#mind-sessions .mind-session-node').click();
-  await frame.locator('#mind-questions [data-kind="raw-request"]').first().click();
+  await frame.locator('#mind-tree [data-kind="raw-request"]').first().click();
   await expect(frame.locator('.reader-target .reader-original')).toHaveText('Synthetic Claude user');
-  await frame.locator('#mind-answers [data-kind="raw-response"]').first().click();
+  await frame.locator('#mind-tree [data-kind="raw-response"]').first().click();
   await expect(frame.locator('.reader-target .reader-original')).toHaveText('Synthetic Claude assistant');
 });
 
@@ -130,8 +139,8 @@ test('selected-session analysis requires consent and updates only after an isola
   await expect(page.locator('#analysis-progress')).toContainText('완료',{timeout:20000});
   expect(starts).toBe(1);
   await page.locator('#analysis-run-close').click();
-  await expect(frame.locator('#mind-sessions [aria-pressed="true"]')).toHaveAttribute('data-key',raw);
-  await expect(frame.locator('#mind-topics')).toContainText('Synthetic generated topic',{timeout:15000});
+  await expect(frame.locator('#mind-tree [data-kind="session"]')).toHaveAttribute('data-key',raw);
+  await expect(frame.locator('#mind-tree [data-kind="topic"]').first()).toContainText('Synthetic generated topic',{timeout:15000});
   await frame.locator('#explorer-analyze').click();
   await expect(page.locator('#analysis-mode')).toHaveValue('decisions');
   await page.locator('#analysis-mode').selectOption('codex');

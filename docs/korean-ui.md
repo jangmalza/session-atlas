@@ -6,13 +6,13 @@ All of the controls described here are presentation only. They never call a mode
 
 ## 세션 탐색: the mind map
 
-The live dashboard opens straight into the mind map. Its session column lists collected sessions with the saved display name, project, recent activity and message count; **세션 목록 펼치기** widens that column into a full list with first/latest request previews, and **마인드맵으로 돌아가기** folds it back. Choosing a session opens its columns: session → topic → question → answer for an analysed session, or session → request → response for one that has not been analysed yet. Column headings are numbered in both layouts, and on narrow screens the numbered stage bar above the map scrolls to each column.
+The live dashboard opens straight into the mind map. Until a session is chosen it shows the session list: collected sessions with the saved display name, project, recent activity, message count and first/latest request previews. Choosing one draws a tree that grows from a single root at the left: the session, then its topics as numbered branches (1, 2, 3 …), each topic's questions (1.1, 1.2 …) and each question's answers as leaves. Topics are always visible; a topic opens its questions when clicked and a question opens its answers, one branch at a time, and clicking an open branch folds it again. A collapsed branch shows how many children it holds. A session without analysis grows session → request → response instead, with requests gathered ten at a time into **요청 1–10** style branches when there are more than ten. **세션 목록 펼치기** above the tree (or clicking the root) returns to the list, and **마인드맵으로 돌아가기** comes back to the tree.
 
 The built-in graph uses Korean classification, status, relationship, and evidence labels. JSON values such as `decision`, message IDs, node titles, summaries, and source quotes remain unchanged.
 
-The map highlights the selected path while keeping other branches readable. The **세션 관리 ⋯**, **주제 관리 ⋯** and **질문 관리 ⋯** menus hold name editing, restoration and auxiliary-topic controls. **←** and **→** in the question column walk the selected topic's stored order across pages; questions whose position is unconfirmed remain explicitly labelled. Selecting a confirmed question or answer opens the reader panel at that exact original message; **질문·근거 보기** opens the detail panel with the saved summary, evidence and relationships.
+Labels rest on their branch lines; the selected path is drawn in the accent colour while other branches stay readable. Hovering a label shows its full title and the ordering note (first question position, user-evidence position or 순서 미확정). The **세션 관리 ⋯**, **주제 관리 ⋯**, **질문 관리 ⋯** and **답변 관리 ⋯** menus in the toolbar above the tree hold name editing, restoration and auxiliary-topic controls for whichever branch is selected. **←** and **→** walk the open topic's questions in stored order. Selecting a confirmed question or answer opens the reader panel at that exact original message; **질문·근거 보기** opens the detail panel with the saved summary, evidence and relationships.
 
-A session without analysis shows a one-line **원문 순서 묶음** notice with an **이 세션 분석** button. Its request and response columns come from the stored chronology only; no topic or answer meaning is inferred.
+A session without analysis shows a one-line **원문 순서 묶음** notice with **이 세션 분석** and **원문 읽기** buttons. Its request and response branches come from the stored chronology only; no topic or answer meaning is inferred.
 
 ## 원문 패널: the reader panel
 
@@ -50,15 +50,15 @@ Questions and answers have **표시 제목 수정** controls, with **제목 저�
 
 ## Catalogue refresh, session categories and animation
 
-While the live page is open, its session catalogue refreshes every five seconds after the preceding request completes. Newly collected sessions appear without reloading the graph or re-fetching complete conversations; existing topic, question and answer branches remain in place. The selected session/topic/question, all column pages, topic group, and session search/project filters survive a transparent refresh and a reload.
+While the live page is open, its session catalogue refreshes every five seconds after the preceding request completes. Newly collected sessions appear without reloading the graph or re-fetching complete conversations; existing topic, question and answer branches remain in place. The selected session, topic, question and answer, the session-list page, the open auxiliary group, and session search/project filters survive a transparent refresh and a reload.
 
 The session catalogue starts with **일반 세션**. Choose **보조 작업** to browse helper sessions grouped under their nearest ordinary conversation, or **분류 미확정** for records whose origin cannot be checked. These categories come from existing Codex session metadata, not a model or the wording of the conversation. Scope and parent choices are remembered by the browser.
 
-New branches animate their connecting lines first, then gently reveal child nodes in sequence. Only the changed column animates; existing branches, detail views and resize redraws stay still, and a reveal survives the redraws that list scrolling or late session data trigger. Keyboard focus remains on the selected node or paging control. The viewer respects the operating system's reduced-motion preference and provides an **애니메이션 줄이기** checkbox for the current browser.
+A newly opened branch animates its connecting lines first, then gently reveals its child nodes in sequence. Only that branch animates; existing branches, detail views and resize redraws stay still, and a reveal survives the redraws that late session data triggers. Keyboard focus remains on the selected node. The viewer respects the operating system's reduced-motion preference and provides an **애니메이션 줄이기** checkbox for the current browser.
 
 ## Answer evidence
 
-An answered question can contain assistant quotations in its own evidence without a separate `answers` edge. The answer column shows these as separate **저장된 답변 근거** cards, with a quoted excerpt and exact original-message navigation. Each quote is independently rechecked against the full source message, role and stored evidence identity before display. Offline HTML shows the reference without the quotation and without network requests.
+An answered question can contain assistant quotations in its own evidence without a separate `answers` edge. The tree shows these as separate leaves on a dotted branch; selecting one shows the quoted excerpt below the tree and opens the exact original message. Each quote is independently rechecked against the full source message, role and stored evidence identity before display. Offline HTML shows the reference without the quotation and without network requests.
 
 Graph display changes never modify the embedded graph JSON, source messages, evidence, IDs or relationships.
 
