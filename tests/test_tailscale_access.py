@@ -270,7 +270,7 @@ class TailscaleHttpTests(unittest.TestCase):
         self.assertEqual(self.database.read_bytes(),before)
 
     def test_authorized_status_and_static_views_are_available(self):
-        for path in ('/', '/index.html', '/graph.html', '/timeline.html', '/status.json'):
+        for path in ('/', '/index.html', '/graph.html', '/status.json'):
             with self.subTest(path=path):
                 status, headers, payload = self.request(path=path)
                 self.assertEqual(status, 200)
@@ -279,7 +279,7 @@ class TailscaleHttpTests(unittest.TestCase):
                 self.assertTrue(payload)
 
     def test_authentication_is_required_before_every_route_reads_data(self):
-        paths = ('/', '/graph.html', '/map.html', '/timeline.html', '/status.json',
+        paths = ('/', '/graph.html', '/map.html', '/status.json',
                  '/timeline/sessions.json', '/timeline/messages.json?session='+SID, '/unknown')
         with patch.object(self.live.timeline, 'read') as read, \
              patch.object(self.live.timeline, 'search') as search, \

@@ -28,7 +28,7 @@ const SessionAtlasTools = (() => {
       entry.answerEvidence.some(evidence=>evidence.messageId===hit.id));
   }
   function create(options) {
-    const {document,fetch,storage,live,getSessions,getTargets,onNavigate,onLayout,onLibraryChange,onFullPage}=options;
+    const {document,fetch,storage,live,getSessions,getTargets,onNavigate,onLayout,onLibraryChange}=options;
     const byId=id=>document.getElementById(id),nav=navigationStore(storage);
     const el=(tag,text="",className="")=>{const e=document.createElement(tag);e.textContent=text;e.className=className;return e;};
     const button=(text,fn)=>{const e=el("button",text);e.type="button";e.addEventListener("click",fn);return e;};
@@ -78,7 +78,7 @@ const SessionAtlasTools = (() => {
       serial++;reader=null;lastRequest=null;panel.hidden=false;document.body.classList.add("has-source-reader");
       body.replaceChildren(el("p",message,"reader-empty"));byId("source-reader-title").textContent="원문 연결 확인";
       byId("source-reader-status").textContent="";byId("source-reader-retry").hidden=true;stopFollow();
-      for(const id of ["source-reader-older","source-reader-newer","source-reader-latest","source-reader-full"])byId(id).disabled=true;
+      for(const id of ["source-reader-older","source-reader-newer","source-reader-latest"])byId(id).disabled=true;
       syncReaderControls();onLayout?.();
     }
     async function openReader(session,message="",offset=null,{scrollToEnd=false,quiet=false}={}) {
@@ -90,7 +90,7 @@ const SessionAtlasTools = (() => {
       byId("source-reader-title").textContent=title(session);
       if(!quiet){byId("source-reader-status").textContent="원문을 불러오는 중…";body.replaceChildren();}
       byId("source-reader-retry").hidden=true;
-      for(const id of ["source-reader-older","source-reader-newer","source-reader-latest","source-reader-full"])byId(id).disabled=true;
+      for(const id of ["source-reader-older","source-reader-newer","source-reader-latest"])byId(id).disabled=true;
       syncReaderControls();onLayout?.();
       const query=new URLSearchParams({session,limit:String(pageSize)});
       if(offset!==null)query.set("offset",String(offset));else if(message)query.set("message",message);
@@ -118,7 +118,6 @@ const SessionAtlasTools = (() => {
         byId("source-reader-older").disabled=value.offset===0;
         byId("source-reader-newer").disabled=value.offset+value.messages.length>=value.total;
         byId("source-reader-latest").disabled=value.offset+value.messages.length>=value.total;
-        byId("source-reader-full").disabled=false;
         if(target){nav.remember(session,target.id);updateButtons();}
         if(scrollToEnd)body.scrollTop=body.scrollHeight;else targetElement?.scrollIntoView({block:"center",behavior:"auto"});
         syncReaderControls();onLayout?.();
@@ -152,7 +151,13 @@ const SessionAtlasTools = (() => {
     byId("source-reader-size").addEventListener("change",()=>{applySize(byId("source-reader-size").value);try {storage?.setItem("context-graph-reading-size",byId("source-reader-size").value);} catch (_) {}});
     byId("source-reader-expand").addEventListener("click",()=>{expanded=!expanded;syncReaderControls();onLayout?.();});
     document.addEventListener("keydown",event=>{if(event.key==="Escape" && expanded){expanded=false;syncReaderControls();onLayout?.();}});
-    byId("source-reader-full").addEventListener("click",()=>{if(lastRequest)onFullPage(lastRequest.session,lastRequest.message);});
+    // Reading a whole session: full height, 100 messages per page, starting at the remembered position or the first message.
+    function readSession(session){
+      if(!validId(session))return;
+      pageSize=100;expanded=true;syncReaderControls();
+      const position=nav.position(session);
+      openReader(session,position||"",position?null:0);
+    }
     byId("explorer-star").addEventListener("click",()=>{if(selectedSession){nav.toggle(selectedSession);updateButtons();onLibraryChange?.();}});
     byId("explorer-resume").addEventListener("click",()=>{const message=nav.position(selectedSession);if(message)openReader(selectedSession,message);});
     function library(){
@@ -202,7 +207,7 @@ const SessionAtlasTools = (() => {
     byId("explorer-search-previous").addEventListener("click",()=>{if(searchPage)search(Math.max(0,searchPage.offset-20));});
     byId("explorer-search-next").addEventListener("click",()=>{if(searchPage)search(searchPage.offset+searchPage.results.length);});
     updateButtons();
-    return {openReader,closeReader,unavailable,updateSession,refresh:()=>{updateButtons();if(searchDialog.open)renderSearch();},
+    return {openReader,readSession,closeReader,unavailable,updateSession,refresh:()=>{updateButtons();if(searchDialog.open)renderSearch();},
       snapshot:nav.snapshot,readerSession:()=>reader?.session.id||lastRequest?.session||""};
   }
   return {normalize,navigationStore,matchingEntries,create};

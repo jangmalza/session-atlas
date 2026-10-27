@@ -14,7 +14,7 @@ Codex rollout JSONL -> read-only scanner -> SQLite
                                          -> offline HTML / JSON graph
 ```
 
-Local Claude Code `projects/**/*.jsonl` transcripts enter the same read-only scanner through `source_adapters.py` when `--claude-home` is given. The live dashboard, timeline and search read the SQLite database only; see [viewer.md](viewer.md). The module-by-module layout is listed in the [README](../README.md#project-layout).
+Local Claude Code `projects/**/*.jsonl` transcripts enter the same read-only scanner through `source_adapters.py` when `--claude-home` is given. The live dashboard, its reader panel and full-text search read the SQLite database only; see [viewer.md](viewer.md). The module-by-module layout is listed in the [README](../README.md#project-layout).
 
 ## Limitations
 

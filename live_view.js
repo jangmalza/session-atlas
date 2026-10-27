@@ -1,8 +1,7 @@
 (() => {
   "use strict";
   const frame = document.getElementById("live-frame");
-  const viewLabels={graph:"세션 탐색",map:"주제 연결 지도",timeline:"원문 읽기·검색"};
-  for(const button of document.querySelectorAll("nav button[data-view]")) button.textContent=viewLabels[button.dataset.view];
+  const viewLabels={graph:"세션 탐색",map:"주제 연결 지도"};
   const mapNotice=document.createElement("section");mapNotice.id="map-context";mapNotice.hidden=true;
   const noticeTitle=document.createElement("strong");noticeTitle.textContent="주제 연결 지도 · 저장된 분석";
   const noticeText=document.createElement("p");noticeText.textContent="세션은 하나의 채팅 기록이고, 주제는 그 안에서 다룬 내용입니다. 이 지도는 내보낸 분석 결과입니다. 세션을 선택해 주제별 질문·답변을 읽으려면 아래 버튼을 누르세요.";
@@ -11,21 +10,18 @@
   const buttons = Array.from(document.querySelectorAll("button[data-view]"));
   const stateLabel = document.getElementById("collector-state");
   let status = JSON.parse(document.getElementById("live-status").textContent);
-  const requestedView = new URLSearchParams(location.search).get("view");
-  let active = ["map", "timeline"].includes(requestedView) ? requestedView : "graph";
+  let active = new URLSearchParams(location.search).get("view") === "map" ? "map" : "graph";
   let loadedRevision = "";
-  let hashes = {graph: "", map: "", timeline: ""};
+  let hashes = {graph: "", map: ""};
   try { hashes = {...hashes, ...JSON.parse(sessionStorage.getItem("context-graph-live-positions") || "{}")}; } catch (_) {}
   const number = new Intl.NumberFormat("ko-KR");
   const time = new Intl.DateTimeFormat("ko-KR", {dateStyle: "short", timeStyle: "medium"});
 
-  function validPosition(view, hash) {
-    return view === "timeline" ? /^#session=[A-Za-z0-9-]{1,128}(?:&message=[a-f0-9]{64})?$/.test(hash) : /^#node=[a-z0-9-]{1,128}$/.test(hash);
-  }
+  const validPosition = hash => /^#node=[a-z0-9-]{1,128}$/.test(hash);
   function savePosition() {
     try {
       const hash = frame.contentWindow.location.hash;
-      hashes[active] = validPosition(active, hash) ? hash : "";
+      hashes[active] = validPosition(hash) ? hash : "";
       sessionStorage.setItem("context-graph-live-positions", JSON.stringify(hashes));
     } catch (_) {}
   }
@@ -35,18 +31,8 @@
     const ready = status[active + "Ready"];
     if (!ready || loadedRevision) return;
     const revision = status[active + "Revision"];
-    let hash = validPosition(active, hashes[active]) ? hashes[active] : "";
-    if (active === "timeline") {
-      const parameters = new URLSearchParams(location.search);
-      if (parameters.has("session")) {
-        const position=new URLSearchParams({session:parameters.get("session")});
-        if(parameters.has("message")) position.set("message",parameters.get("message"));
-        const target = "#" + position;
-        if (validPosition(active, target)) hash = target;
-      }
-    }
-    const mode=active==="graph" && new URLSearchParams(location.search).get("mode")==="mind" ? "&mode=mind" : "";
-    const target = active + ".html?rev=" + encodeURIComponent(revision) + mode + hash;
+    const hash = validPosition(hashes[active]) ? hashes[active] : "";
+    const target = active + ".html?rev=" + encodeURIComponent(revision) + hash;
     // Some embedded Chromium views retain the initial about:blank document
     // while the parent is navigating. Start after parent load so the initial
     // iframe navigation is not cancelled by the parent document committing.
@@ -107,40 +93,8 @@
   for (const button of buttons) button.addEventListener("click", () => {
     if (button.dataset.view === active) return;
     savePosition();
-    if(button.dataset.view==="graph") {
-      hashes.graph="";
-      try {sessionStorage.setItem("context-graph-live-positions",JSON.stringify(hashes));} catch (_) {}
-    }
     const url = new URL(location.href);
-    url.searchParams.delete("session");
-    url.searchParams.delete("message");
     url.searchParams.set("view", button.dataset.view);
-    location.assign(url.href);
-  });
-  window.addEventListener("message", event => {
-    if(event.origin !== location.origin || event.source !== frame.contentWindow) return;
-    if(event.data?.type==="context-graph-open-mindmap"){
-      // The timeline has no tab bar to return through; its own button brings the mind map back.
-      savePosition();
-      const url=new URL(location.href);
-      url.searchParams.delete("session");url.searchParams.delete("message");url.searchParams.set("view","graph");
-      location.assign(url.href);return;
-    }
-    if(!["context-graph-open-source","context-graph-open-session","context-graph-reader-position"].includes(event.data?.type)) return;
-    const session=event.data.session, message=event.data.message;
-    if(typeof session!=="string" || !/^[A-Za-z0-9-]{1,128}$/.test(session)) return;
-    if(event.data.type==='context-graph-reader-position'){
-      if(active!=='timeline')return;
-      hashes.timeline='#'+new URLSearchParams({session});
-      try{sessionStorage.setItem('context-graph-live-positions',JSON.stringify(hashes));}catch(_){}
-      const position=new URL(location.href);position.searchParams.set('session',session);position.searchParams.delete('message');history.replaceState(null,'',position.href);return;
-    }
-    if(event.data.type==="context-graph-open-source" && (typeof message!=="string" || !/^[a-f0-9]{64}$/.test(message))) return;
-    savePosition();
-    const url=new URL(location.href);
-    const position=new URLSearchParams({view:"timeline",session});
-    if(event.data.type==="context-graph-open-source") position.set("message",message);
-    url.search=position.toString();
     location.assign(url.href);
   });
   paint(status);

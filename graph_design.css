@@ -22,19 +22,8 @@ button:disabled:hover{background:var(--panel);border-color:var(--line)}
 .layout{padding:0 22px 20px;gap:24px}
 main{max-width:1100px;padding:0 4px 24px}
 body.has-detail .layout{grid-template-columns:minmax(0,1fr)}
-.reader-nav{margin:0;padding:0 0 9px;border-bottom:1px solid var(--line)}
-.reader-nav>div{gap:4px}
-.reader-nav button{border:0;border-bottom:2px solid transparent;border-radius:0;background:transparent;padding:9px 10px;font-size:13px}
-.reader-nav button[aria-pressed=true]{border-bottom-color:var(--accent);color:var(--accent)}
 .reader-view-controls{position:relative;align-items:center;min-width:0}
-.reader-nav .auxiliary-view-menu{margin:0;padding:0;border:0}
-.reader-nav .auxiliary-view-menu>summary{padding:9px 10px;border-bottom:2px solid transparent;font-size:13px;color:var(--muted)}
-.reader-nav .auxiliary-view-menu[open]>summary,.reader-nav .auxiliary-view-menu[data-active=true]>summary{color:var(--accent);border-bottom-color:var(--accent)}
-.auxiliary-view-options{position:absolute;right:0;top:calc(100% + 6px);z-index:12;display:grid;gap:4px;width:240px;max-width:100%;padding:9px;background:var(--panel);border:1px solid var(--line);border-radius:3px;box-shadow:0 10px 28px var(--shadow)}
-.reader-nav .auxiliary-view-options button{text-align:left;border:0;border-radius:2px;white-space:normal}
-.reader-nav .auxiliary-view-options button[aria-pressed=true]{background:var(--tint)}
-.auxiliary-view-options .hint{font-size:11px;line-height:1.7;margin:7px 6px 3px}
-#info,#page-info,#neighbors-info,.hint{font-size:12px}
+.hint{font-size:12px}
 #info{font-family:var(--mono)}
 #view-info{font-size:12px;margin:16px 0}
 .catalog-scope{margin:0;padding:11px 0;align-items:center;gap:12px;border:0;border-bottom:1px solid var(--line);border-radius:0;background:transparent}
@@ -120,27 +109,8 @@ body.has-detail .layout{grid-template-columns:minmax(0,1fr)}
 .answer-evidence-preview{font-size:14px;line-height:1.9;border-left:2px solid var(--accent);padding-left:12px}
 .answer-evidence-card .qa-label{font-size:10px}
 .answer-evidence-card .qa-read{font-size:12px}
-#qa-browser{border-radius:3px;border-top:2px solid var(--text);padding:18px 20px}
-.qa-selectors strong{font-size:15px}
-.qa-selectors label>span{font-size:11px}
-#qa-session-meta{font-size:12px}
-#qa-session-raw{font-size:12px}
-#qa-browser .topic-editor{margin:12px 0}
-.qa-session>h2{font:24px/1.5 var(--serif);border-bottom:1px solid var(--line);padding-bottom:12px;margin-top:28px}
-.qa-section-title{font:12px/1.4 var(--mono)}
-.qa-row{border-radius:3px}
-.qa-time{font:11px/1.6 var(--mono);border-bottom:1px solid var(--line);padding:10px 22px}
-.qa-title{font-size:20px;line-height:1.65;font-weight:600}
-.qa-summary{font-size:15px}
-.qa-answer{padding:16px 18px;border-top:0;border-left:2px solid var(--accent);background:var(--bg)}
-.qa-answer .qa-title{font-size:17px}
 .qa-label{font:11px/1.5 var(--mono);font-weight:700}
 .qa-missing,.qa-read{font-size:13px}
-.qa-details{font-size:12px}
-.card{padding:18px 22px;border-radius:3px}
-.card .name{font-size:19px;font-weight:600}
-.card .excerpt{font-size:14px}
-.card.selected{border:1px solid var(--accent);padding:18px 22px}
 .pill{font:11px/1.5 var(--mono);border:1px solid var(--line);border-radius:2px;background:transparent}
 .right,.mind-mode.has-detail .right{position:fixed;inset:0 0 0 auto;width:min(580px,100%);z-index:20;border:0;border-left:1px solid var(--line);border-radius:0;padding:0 24px 24px;box-shadow:-16px 0 50px var(--shadow)}
 #inspector{font-size:16px;line-height:1.9}
@@ -151,7 +121,6 @@ summary{font-size:13px}
 .relation button{font-size:15px}
 .diagram-viewport{border-radius:3px}
 svg .node-title{font-size:15px}
-svg .node-kind,svg .edge-label{font-size:11px}
 #item-title-dialog{border-radius:5px;border-top:3px solid var(--accent);padding:24px;box-shadow:0 24px 100px #0004}
 #item-title-dialog::backdrop{background:#101c2af2}
 .item-title-dialog-head h2{font-size:20px}
@@ -177,9 +146,6 @@ svg .node-kind,svg .edge-label{font-size:11px}
  .controls select{order:2;flex:1;min-width:0;max-width:100%;font-size:12px}
  .layout{padding:0 12px 16px}
  main{padding:0 2px 18px}
- .reader-nav{gap:5px}
- .reader-nav button{font-size:12px;padding:8px 6px}
- .reader-nav .auxiliary-view-menu>summary{font-size:12px;padding:8px 6px}
  #info{font-size:10px}
  .catalog-scope{gap:8px;padding:9px 0}
  .catalog-scope label{font-size:11px}
@@ -204,12 +170,6 @@ svg .node-kind,svg .edge-label{font-size:11px}
  .mind-column .mind-node-list{max-height:260px}
  .mind-column:nth-child(3) .mind-node-list{max-height:360px}
  .mind-column:last-child .mind-node-list{max-height:520px}
- .qa-selectors{grid-template-columns:minmax(0,1fr);gap:14px}
- #qa-browser{padding:15px}
- .qa-session>h2{font-size:21px}
- .qa-title{font-size:18px}
- .qa-summary{font-size:14px}
- .qa-open{padding:17px}
  .right{padding:0 18px 20px}
 }
 
@@ -224,8 +184,7 @@ svg .node-kind,svg .edge-label{font-size:11px}
 #session-mindmap:has(#mind-canvas.session-picker-open) .mind-help>.hint{display:none}
 .mind-help{padding:6px 0 4px}
 #mind-selection{padding:8px 0 10px}
-.hint,#info,#page-info,#neighbors-info,#view-info{font-size:13px}
-.reader-nav button,.reader-nav .auxiliary-view-menu>summary{font-size:14px}
+.hint,#view-info{font-size:13px}
 .catalog-scope label{font-size:13px}
 .catalog-scope select{font-size:13px;padding:6px 9px}
 .context-help summary,.mind-help summary{font-size:12px}
@@ -240,7 +199,6 @@ svg .node-kind,svg .edge-label{font-size:11px}
 #mind-selection .breadcrumb-label,.mind-selection-note{font-size:11px}
 .topic-editor button,.item-title-action button,.item-title-trigger,.topic-groups button{font-size:12px}
 .topic-editor p,.node-management-content p{font-size:12px}
-.qa-selectors label>span,#qa-session-meta,#qa-session-raw{font-size:13px}
 @media(max-width:700px){
  .viewer-header{padding:12px 16px 10px;gap:8px}
  .viewer-header p{display:none}

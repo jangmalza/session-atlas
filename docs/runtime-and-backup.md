@@ -4,7 +4,7 @@ Back to [README](../README.md)
 
 ## Managed runtime (`service_runtime.py`)
 
-Copy `runtime-profile.example.json` to a private directory outside the repository and replace its example paths. It defines one collector and any local/read-only viewers. Existing Tailscale viewers can be added with their exact `tailscaleOrigin` and `tailscaleUser`; the supervisor does not change Tailscale permissions or exposure.
+Copy `runtime-profile.example.json` to a private directory outside the repository and replace its example paths. It defines one collector and any local/read-only viewers. One viewer per audience is enough (for example one local read-only viewer and one Tailscale viewer): every viewer serves the same mind map with its reader panel and search, so separate timeline or search viewers are no longer needed. Existing Tailscale viewers can be added with their exact `tailscaleOrigin` and `tailscaleUser`; the supervisor does not change Tailscale permissions or exposure.
 
 ```powershell
 python .\service_runtime.py start --config "$HOME\.codex-context-graph\profile.json"

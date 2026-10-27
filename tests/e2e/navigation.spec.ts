@@ -24,21 +24,15 @@ test('four columns, verified source panel and next question preserve original co
   await expect(frame.locator('#mind-questions [aria-pressed="true"] .name')).toHaveText('E2E question 01');
   await expect(frame.locator('#mind-links .mind-edge-active')).not.toHaveCount(0);
 });
-test('reader returns to the same old page after navigation and reload',async({page})=>{
-  await page.goto('/?view=timeline&session='+sid);let frame=page.frameLocator('#live-frame');
-  await expect(frame.locator('#message-list .message').first().locator('.message-heading')).toContainText('#251');
-  await frame.locator('#older').click();await expect(frame.locator('#message-list .message').first().locator('.message-heading')).toContainText('#151');
-  await frame.locator('#older').click();await expect(frame.locator('#message-list .message').first().locator('.message-heading')).toContainText('#51');
-  await frame.locator('#message-list .raw-message').first().locator('summary').first().click();
-  await frame.locator('#message-list').evaluate(e=>{e.scrollTop=180;});
-  const first=await frame.locator('#message-list .message').first().getAttribute('data-message-id');
-  await frame.locator('#back-to-mindmap').click();await expect(page.frameLocator('#live-frame').locator('#mind-canvas')).toBeVisible();
+test('reader keeps its paging position across a reload and resumes from the saved place',async({page})=>{
+  const frame=await selectQuestion(page);
+  await frame.locator('#source-reader-newer').click();await expect(frame.locator('#source-reader-status')).toContainText('#8');
+  const first=await frame.locator('#source-reader-body .reader-message').first().getAttribute('data-message-id');
+  await frame.locator('#source-reader-page-size').click();await expect(frame.locator('#source-reader-status')).toContainText('/ 350');
+  await page.reload();const again=page.frameLocator('#live-frame');
+  await again.locator('#explorer-resume').click();await expect(again.locator('#source-reader')).toBeVisible();
+  await expect(again.locator('#source-reader-body .reader-target')).toHaveAttribute('data-message-id',first!);
   await expect(page.locator('nav [data-view]')).toHaveCount(0);
-  await page.goto('/?view=timeline');frame=page.frameLocator('#live-frame');
-  await expect(frame.locator('#message-list .message').first()).toHaveAttribute('data-message-id',first!);
-  await page.reload();await expect(page.frameLocator('#live-frame').locator('#message-list .message').first()).toHaveAttribute('data-message-id',first!);
-  await expect(page.frameLocator('#live-frame').locator('#follow-latest')).not.toBeChecked();
-  await expect(page.frameLocator('#live-frame').locator('#message-list .raw-message').first()).toHaveAttribute('open','');
 });
 test('search follows stored evidence and bookmarks persist without touching titles',async({page})=>{
   await page.goto('/?view=graph');const frame=page.frameLocator('#live-frame');

@@ -165,18 +165,15 @@ class LiveDashboard:
         self._lock = threading.Lock()
         self._server = None
         self._thread = None
-        from session_timeline import TimelineReader, timeline_html
+        from session_timeline import TimelineReader
         from context_graph import codex_home as default_codex_home
         self.timeline = TimelineReader(database, codex_home if codex_home is not None else default_codex_home())
         from analysis_control import AnalysisControl
         self.analysis = AnalysisControl(database, codex_home if codex_home is not None else default_codex_home())
-        timeline_bytes = timeline_html()
-        atomic_write(self.directory / "timeline.html", timeline_bytes)
-        self._timeline_revision = fingerprint(timeline_bytes)
         assets=('graph_view.html','graph_view.js','graph_view.css','graph_design.css','explorer_tools.js','explorer_tools.css','raw_turns.js','ui_theme.js','ui_theme.css','live_view.js','live_view.css')
-        self._ui_revision=fingerprint(b''.join(Path(__file__).with_name(name).read_bytes() for name in (*assets,'analysis_ui.html','analysis_ui.js','analysis_ui.css'))+timeline_bytes)
+        self._ui_revision=fingerprint(b''.join(Path(__file__).with_name(name).read_bytes() for name in (*assets,'analysis_ui.html','analysis_ui.js','analysis_ui.css')))
         self._status = {"state": "starting", "autoAnalysis": False, "graphReady": False, "mapReady": False,
-                        "timelineReady": True, "timelineRevision": self._timeline_revision, "analysisRevision": "",
+                        "analysisRevision": "",
                         "graphRevision": "", "mapRevision": "", "lastCheckedUtc": "", "scanErrors": 0,
                         **{k: 0 for k in ("sessionCount", "messageCount", "analysedSessionCount", "pendingSessionCount", "pendingMessageCount")}}
         self._save_status(self._status)
@@ -234,7 +231,7 @@ class LiveDashboard:
                        "collector":collection.get('collector',{'state':'unknown'}),
                        "uiRevision":self._ui_revision,
                        "readOnlyViewer": bool(collection.get("readOnlyViewer")),
-                       "timelineReady": True, "timelineRevision": self._timeline_revision, "analysisRevision": analysis_revision,
+                       "analysisRevision": analysis_revision,
                        "lastCheckedUtc": collection["lastCheckedUtc"], "graphReady": True,
                        "mapReady": map_bytes is not None, "graphRevision": graph_revision,
                        "mapRevision": fingerprint(map_bytes) if map_bytes is not None else ""})
@@ -249,8 +246,7 @@ class LiveDashboard:
 
     def start(self) -> None:
         dashboard = self
-        routes = {"/": "index.html", "/index.html": "index.html", "/graph.html": "graph.html", "/map.html": "map.html",
-                  "/timeline.html": "timeline.html"}
+        routes = {"/": "index.html", "/index.html": "index.html", "/graph.html": "graph.html", "/map.html": "map.html"}
 
         class Handler(BaseHTTPRequestHandler):
             def log_message(self, *args):

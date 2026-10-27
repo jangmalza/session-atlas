@@ -18,8 +18,6 @@ header{position:relative;z-index:12}
 .metrics span{font-size:11px;color:var(--muted)}
 .policy-note{grid-column:1/-1;margin:4px 0 0;font-size:11px;line-height:1.6;color:var(--muted)}
 .explanation{display:none}
-nav{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 22px;background:var(--panel);border-bottom:1px solid var(--line)}
-.views{display:flex;gap:3px}
 button{font:14px/1.4 var(--sans);padding:10px 14px;min-height:40px;border:0;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;white-space:nowrap}
 button:hover{color:var(--accent);background:var(--tint)}
 button[aria-pressed=true]{color:var(--accent);border-bottom-color:var(--accent);font-weight:700}
@@ -38,6 +36,6 @@ iframe{width:100%;height:100%;border:0;display:block}
  #collector-state,.model-policy{font-size:10px}
  .brand{margin-right:0}#collector-state{margin-left:auto}
  .ui-theme{margin-left:0}.collection-stats{margin-left:auto}
- nav{padding:0 10px;gap:5px;flex-wrap:wrap}button{font-size:12px;padding:9px 8px}
+ button{font-size:12px;padding:9px 8px}
  #last-checked{display:none}
 }

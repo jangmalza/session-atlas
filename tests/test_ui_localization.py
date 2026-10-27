@@ -92,7 +92,7 @@ const toggle=`${open ? "Collapse" : "Expand"} ${title}`;'''
         embedded = re.search(r'id="graph-data">(.*?)</script>', html, re.S)[1]
         self.assertEqual(json.loads(embedded), graph)
         self.assertIn('"decision": "결정"', html)
-        self.assertIn('aria-label="분류 필터"', html)
+        self.assertIn('aria-label="프로젝트 필터"', html)
 
     def test_compiled_concatenations_translate_display_fragments_only(self):
         source = 'const field="messages";const line=n+" messages · "+t+" topics · "+i+" entries";'

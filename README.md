@@ -2,7 +2,7 @@
 
 Local-first archive and viewer for Codex CLI/Desktop and Claude Code conversation transcripts.
 
-Session Atlas reads the JSONL session files read-only, stores user/assistant text messages in SQLite, and serves a Korean-language local web viewer: a session list, a four-column mind map of session → topic → question → answer, a chronological Q&A view, full-text search and an original-message reader. Semantic analysis is opt-in and never runs during collection or viewing. This is a reconstruction of conversation knowledge, not access to the model's actual internal context.
+Session Atlas reads the JSONL session files read-only, stores user/assistant text messages in SQLite, and serves a Korean-language local web viewer: a mind map of session → topic → question → answer (session → request → response until a session is analysed), full-text search and an original-message reader panel. Semantic analysis is opt-in and never runs during collection or viewing. This is a reconstruction of conversation knowledge, not access to the model's actual internal context.
 
 ![Session Atlas viewer](docs/screenshot.png)
 
@@ -12,7 +12,7 @@ Session Atlas reads the JSONL session files read-only, stores user/assistant tex
 
 - Read-only incremental collection from `CODEX_HOME/sessions/**/rollout-*.jsonl` and `archived_sessions`, plus local Claude Code `projects/**/*.jsonl`
 - SQLite checkpointing, session deduplication and user/assistant text-only normalization; polls for newly appended session messages
-- Session list, four-column mind map, chronological Q&A, full-text search and original-message reader, all without model calls
+- Mind map, full-text search and an original-message reader panel with paging, follow-latest and font size, all without model calls
 - Editable display names and topic grouping kept in a sidecar file; original messages and saved analyses are never rewritten
 - Export a session transcript for [Conversation Map](https://github.com/tonitalej/conversation-map) and import its analyzed `map.json`, merging evidence across sessions only on unambiguous project + classification + exactly normalized title matches
 - Export searchable offline HTML and graph JSON
@@ -30,13 +30,13 @@ python .\context_graph.py --claude-home "$HOME\.claude" watch --live-dir "$HOME\
 
 Python 3.10+ (3.14 recommended for compressed archives); Windows 11 supported. By default, Codex sessions are read from `$env:CODEX_HOME` or `$HOME\.codex`. The SQLite database is written outside the repository to `$HOME\.codex-context-graph\knowledge.db`. Omit `--claude-home` to collect only Codex.
 
-The session list, full-text search, original-message reader and chronological request/response view work without model calls. Semantic topic/answer graphs use explicitly imported or requested analyses. Original files are never rewritten.
+The mind map, full-text search and original-message reader work without model calls. Semantic topic/answer graphs use explicitly imported or requested analyses. Original files are never rewritten.
 
 ## How it works
 
 - **Collection** — the `watch` loop scans Codex (and optionally Claude Code) JSONL read-only and incrementally, checkpoints each file in SQLite and deduplicates sessions and event/response mirrors. It never calls a model. See [docs/collection.md](docs/collection.md).
 - **Storage** — messages, checkpoints and imported maps live in one SQLite database outside the repository; display names and topic grouping live in a `<database-stem>.topic-display.json` sidecar; original transcript files and saved analyses are never rewritten.
-- **Viewer** — the live dashboard binds only to `127.0.0.1` and serves the Korean UI, aggregate status, read-only timeline/search queries and explicit local display edits. `serve` opens a read-only viewer beside a running collector, optionally behind a private Tailscale Serve route. See [docs/viewer.md](docs/viewer.md).
+- **Viewer** — the live dashboard binds only to `127.0.0.1` and serves the Korean mind map UI, aggregate status, read-only message/search queries and explicit local display edits. `serve` opens a read-only viewer beside a running collector, optionally behind a private Tailscale Serve route. See [docs/viewer.md](docs/viewer.md).
 - **Analysis** — explicit opt-in only: `analyze --allow-model`, `--topic-classifier decisions --allow-api`, or the confirmed **이 세션 분석** job in the dashboard. Every draft is validated against the full transcript before import; a failed run never replaces a stored graph. See [docs/analysis.md](docs/analysis.md).
 - **Runtime** — `service_runtime.py` supervises one collector and any viewers, with optional Windows login autostart; `backup`/`restore` use SQLite's online backup API and verify the archive before writing a new database. See [docs/runtime-and-backup.md](docs/runtime-and-backup.md).
 
@@ -47,7 +47,7 @@ The session list, full-text search, original-message reader and chronological re
 | `context_graph.py` | Collector, SQLite schema, cross-session graph and CLI entry point |
 | `analysis_pipeline.py` | Opt-in Codex analysis, Conversation Map validation and Decisions topic assignment (recently split out of `context_graph.py`) |
 | `live_dashboard.py` | Loopback HTTP dashboard and JSON endpoints |
-| `session_timeline.py` | Read-only timeline/search queries and the timeline page |
+| `session_timeline.py` | Read-only message, context, chronology and search queries behind the reader panel |
 | `analysis_control.py` | Explicitly confirmed single-session analysis jobs with staging and backup |
 | `analysis_credentials.py` | Decisions key storage: Windows Credential Manager, or the OS keychain through `keyring` elsewhere |
 | `decisions_topics.py` | Decisions API client with cache |
@@ -59,7 +59,7 @@ The session list, full-text search, original-message reader and chronological re
 | `question_timeline.py` | Offline question ordering from verified user-message evidence |
 | `localize_map.py` | Korean localization of a built Conversation Map HTML |
 | `ui_ko.py` | Korean labels |
-| `graph_view.html/js/css`, `session_timeline.js/css`, `live_view.js/css`, `explorer_tools.js`, `raw_turns.js`, `ui_theme.js/css`, `analysis_ui.html/js/css` | Front-end: mind map, timeline, live status, explorer tools, raw turns, themes and the analysis dialogs |
+| `graph_view.html/js/css`, `graph_design.css`, `live_view.js/css`, `explorer_tools.js/css`, `raw_turns.js`, `ui_theme.js/css`, `analysis_ui.html/js/css` | Front-end: mind map, live status, reader panel and search, raw turns, themes and the analysis dialogs |
 
 ## Development
 
@@ -76,8 +76,8 @@ Set `E2E_PYTHON` to a Python 3.14 executable when `python` on `PATH` is not one.
 ## Documentation
 
 - [docs/collection.md](docs/collection.md) — sources and default paths, Claude Code adapter, `.jsonl.zst` archives, `watch`, mirror deduplication, project maps for multiple worktrees
-- [docs/viewer.md](docs/viewer.md) — live dashboard directory and server, snapshots, timeline and full-text search, read-only `serve`, private Tailscale viewer
-- [docs/korean-ui.md](docs/korean-ui.md) — Korean display labels: session list, mind map, display names and auxiliary topics, chronological Q&A, answer evidence, `localize_map.py`
+- [docs/viewer.md](docs/viewer.md) — live dashboard directory and server, snapshots, reader panel and full-text search, read-only `serve`, private Tailscale viewer
+- [docs/korean-ui.md](docs/korean-ui.md) — Korean display labels: mind map, reader panel, display names and auxiliary topics, answer evidence, `localize_map.py`
 - [docs/analysis.md](docs/analysis.md) — opt-in Codex analysis, Decisions topic assignment, manual map import, long-session chunking, validation recovery and caches
 - [docs/runtime-and-backup.md](docs/runtime-and-backup.md) — `service_runtime.py` supervisor, login autostart, backup and restore
 - [docs/testing.md](docs/testing.md) — unit, Node and Playwright tests, CI matrix, formatting, editable install

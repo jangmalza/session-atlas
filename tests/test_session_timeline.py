@@ -18,7 +18,7 @@ import context_graph as cg
 from live_dashboard import LiveDashboard, embedded_json
 from decisions_topics import map_fingerprint
 from topic_display import display_revision, read_session_names, set_session_display
-from session_timeline import TimelineReader, timeline_html
+from session_timeline import TimelineReader
 
 SID = '12345678-1234-4234-8234-123456789abc'
 
@@ -310,7 +310,6 @@ class SessionTimelineTests(unittest.TestCase):
         self.assertEqual(raised.exception.code,405)
         raised.exception.close()
         self.assertEqual(self.unchanged_tables(), before)
-        self.assertIn("connect-src 'self'", timeline_html().decode())
 
     def test_serve_never_collects_or_writes_database_or_calls_a_model(self):
         before = self.db_file.read_bytes()

@@ -1,7 +1,6 @@
 """Read-only session/message views joined to existing, source-checked analyses."""
 from __future__ import annotations
 
-import base64
 from contextlib import closing
 import hashlib
 import json
@@ -13,7 +12,6 @@ import threading
 import context_graph as cg
 from topic_overlays import project_structure, read_overlays
 from topic_display import display_revision, map_fingerprint, project_topic_display, read_topic_display, read_session_names, session_display_state, item_label_metadata
-from ui_ko import CLASSIFICATION_KO, RELATION_KO, STATUS_KO
 from session_metadata import open_rollout
 
 
@@ -545,43 +543,3 @@ class TimelineReader:
                                      "analysisNodeIds":list(entry['by_message'].get(row['id'], []))})
                     total += 1
         return {"results":hits, "total":total, "offset":offset, "limit":limit, "autoAnalysis":False}
-
-
-def timeline_html() -> bytes:
-    script = (Path(__file__).with_name("ui_theme.js").read_text(encoding="utf-8") + "\n" + Path(__file__).with_name("session_timeline.js").read_text(encoding="utf-8")).strip()
-    style = "\n".join(Path(__file__).with_name(name).read_text(encoding="utf-8") for name in ("session_timeline.css", "ui_theme.css", "timeline_design.css")).strip()
-    hashes = [base64.b64encode(hashlib.sha256(asset.encode()).digest()).decode() for asset in (script, style)]
-    policy = (f"default-src 'none'; script-src 'sha256-{hashes[0]}'; style-src 'sha256-{hashes[1]}'; "
-              "connect-src 'self'; base-uri 'none'; form-action 'none'")
-    labels = json.dumps({"classification": CLASSIFICATION_KO, "status": STATUS_KO, "relation": RELATION_KO}, ensure_ascii=False)
-    return f'''<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="{policy}"><meta name="referrer" content="no-referrer">
-<title>세션 · 메시지 타임라인</title><style>{style}</style></head><body>
-<header><div><span class="eyebrow">SOURCE / 원문 기록</span><h1>원문 이어 읽기</h1><p>원문을 검색하고, 앞뒤 맥락과 저장된 분석을 함께 확인하세요.</p></div>
-<div class="reading-controls"><button id="back-to-mindmap" type="button">← 마인드맵으로</button><button id="toggle-sessions" type="button" aria-expanded="true">세션 목록 숨기기</button>
-<label>글자 크기 <select id="reading-size" aria-label="글자 크기"><option value="normal">보통</option><option value="large">크게</option><option value="largest">아주 크게</option></select></label>
-<span id="timeline-state" role="status">불러오는 중</span></div></header>
-<section class="fulltext-search" aria-label="전체 원문 검색"><form id="fulltext-form">
-<label for="fulltext-query">전체 원문 검색</label><input id="fulltext-query" type="search" maxlength="200" required placeholder="기억나는 단어나 문장을 입력하세요" autocomplete="off">
-<select id="fulltext-scope" aria-label="검색 범위"><option value="all">모든 세션</option><option value="session">현재 세션</option></select>
-<select id="fulltext-role" aria-label="검색할 화자"><option value="">모든 화자</option><option value="user">사용자</option><option value="assistant">어시스턴트</option></select>
-<button type="submit">원문 검색</button><button id="reopen-search" type="button" hidden>검색 결과 다시 보기</button></form></section>
-<dialog id="search-dialog" aria-labelledby="search-title"><div class="search-dialog-head"><h2 id="search-title">원문 검색 결과</h2><button id="close-search" type="button">검색 닫기</button></div>
-<p id="search-summary" role="status"></p><p class="muted">메시지를 선택하면 해당 위치와 앞뒤 대화를 함께 엽니다. 분석 여부와 관계없이 원문 전체를 검색합니다.</p>
-<div id="search-results"></div><div class="search-pages"><button id="search-previous" type="button">이전 검색 결과</button><button id="search-next" type="button">다음 검색 결과</button></div></dialog>
-<div class="timeline-layout"><aside class="sessions" aria-label="세션 목록"><h2>수집한 세션</h2>
-<input id="session-search" type="search" aria-label="세션 찾기" placeholder="제목·첫 요청·프로젝트 검색">
-<select id="session-kind" aria-label="세션 종류"><option value="primary">일반 세션</option><option value="subagent">보조 작업</option><option value="unknown">분류 미확정</option></select>
-<label id="session-parent-filter" hidden>상위 세션<select id="session-parent" aria-label="보조 작업의 상위 세션"></select></label>
-<select id="session-project" aria-label="타임라인 프로젝트 필터"><option value="">모든 프로젝트</option></select>
-<label class="check"><input id="analysed-only" type="checkbox">분석 결과 있는 세션</label>
-<p id="session-count" class="muted"></p><div id="session-list"></div></aside>
-<main class="conversation"><section class="conversation-head"><h2 id="conversation-title">세션을 선택하세요</h2><p id="conversation-meta" class="muted"></p>
-<div class="view-switch" role="group" aria-label="대화 보기 방식"><button id="view-conversation" type="button" aria-pressed="true">대화 흐름</button><button id="view-analysis" type="button" aria-pressed="false">정리된 내용</button></div>
-<div class="paging" id="message-paging"><button id="older" type="button">이전 100개</button><button id="newer" type="button">다음 100개</button><button id="latest" type="button">최신 메시지</button><label class="check"><input id="follow-latest" type="checkbox" checked>새 메시지 따라가기</label></div>
-<div id="analysis-filters" role="group" aria-label="정리된 내용 분류" hidden></div>
-<p id="timeline-summary" class="muted"></p><button id="unplaced" type="button" hidden></button></section>
-<div id="message-list" tabindex="0" aria-label="시간순 메시지 목록"><p class="empty">대화 기록을 준비하고 있습니다.</p></div>
-<div id="analysis-overview" tabindex="0" aria-label="정리된 내용 목록" hidden></div></main>
-<aside id="analysis-panel" class="analysis-detail" aria-label="분석 내용과 근거" hidden><div class="analysis-panel-head"><h2>분석 내용과 근거</h2><button id="close-analysis" type="button" aria-label="상세 닫기">닫기</button></div><div id="analysis-detail"></div></aside></div>
-<script type="application/json" id="timeline-labels">{labels}</script><script>{script}</script></body></html>'''.encode('utf-8')

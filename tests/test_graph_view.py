@@ -26,7 +26,7 @@ class GraphViewTests(unittest.TestCase):
         self.assertEqual(graph,before)
         self.assertNotIn('<img src=x>',document)
         self.assertNotRegex(document,r'<(?:script|link)[^>]+(?:src|href)=')
-        self.assertIn('aria-label="분류 필터"',document)
+        self.assertIn('aria-label="프로젝트 필터"',document)
         self.assertEqual(graph['edges'][0]['from'],'n-303')
 
     def test_offline_question_metadata_is_separate_from_immutable_graph_and_escaped(self):
