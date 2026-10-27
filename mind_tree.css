@@ -13,6 +13,9 @@ body.has-source-reader .mind-tree-host{height:clamp(220px,34vh,520px)}
 #mind-tree .mind-node.mind-hit .name{font-weight:700}
 #mind-tree .mind-node .tree-hits{flex:none;padding:0 6px;border-radius:9px;background:var(--accent);color:var(--on-accent);font:10px/18px var(--mono)}
 .mind-search-note{color:var(--accent)}
+#mind-selection .breadcrumb-up{font-size:12px;padding:2px 8px;color:var(--accent);background:transparent}
+#mind-actions .root-session{color:var(--accent);border-color:var(--accent)}
+#mind-tree .mind-node.kind-project .name{font-weight:700}
 #mind-tree .mind-node,#mind-tree .mind-note{position:absolute;box-sizing:border-box;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #mind-tree .mind-node{display:inline-flex;align-items:center;gap:7px;padding:3px 8px 4px;min-height:0;border:0;border-bottom:1.5px solid var(--muted);border-radius:0;background:transparent;color:var(--text);font-size:13px;line-height:1.4;text-align:left;cursor:pointer;box-shadow:none;opacity:1;transition:color .12s,border-color .12s,background-color .12s}
 #mind-tree .mind-node>*{min-width:0}

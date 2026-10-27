@@ -1185,6 +1185,85 @@ test('the search box lights matching branches of the open session instead of hid
   assert.equal(app.state().session,data.sessionId);
 });
 
+test('a chosen project roots the tree, sessions branch from it and one session can become the root and come back',async()=>{
+  const data=fixture(),app=browser({data,messages:url=>panelResponse(data,url)});await settle();
+  change(app,'project','test');
+  assert.equal(app.state().rootKind,'project');
+  assert.equal(app.elements.get('mind-session-picker').hidden,true,'a project root needs no session to show a tree');
+  const root=app.nodes('project')[0];assert.equal(root.dataset.depth,'0');assert.equal(root.querySelector('.name').textContent,'test');
+  const sessions=app.nodes('session');assert.equal(sessions.length,48);
+  assert.deepEqual(sessions.slice(0,2).map(node=>node.querySelector('.tree-no').textContent),['1','2']);
+  assert.ok(sessions.every(node=>node.dataset.depth==='1'));
+  assert.equal(app.selected('session'),null);
+  sessions.find(node=>node.dataset.key===data.sessionId).click();
+  assert.equal(app.selected('session').dataset.key,data.sessionId);assert.equal(app.state().session,data.sessionId);
+  assert.equal(app.nodes('topic').length,18,'the open session branch shows its topics');
+  assert.equal(app.selected('session').querySelector('.tree-count'),null,'an open branch drops its count');
+  app.nodes('topic').find(node=>node.dataset.key==='topic:topic-12').click();
+  const questions=app.nodes('question');assert.equal(questions.length,16);
+  assert.equal(questions[0].querySelector('.tree-no'),null,'questions under a project root carry no number');
+  questions.find(node=>node.dataset.key===data.selection.question).click();await settle();
+  assert.equal(app.selected('question').dataset.key,data.selection.question);
+  assert.equal(app.selected('question').getAttribute('aria-expanded'),null,'questions are leaves four levels down');
+  assert.equal(app.answers().length,0);
+  assert.equal(app.elements.get('source-reader-body').querySelector('.reader-target').dataset.messageId,'m12','a leaf question still opens its original');
+  assert.match(app.elements.get('mind-selection').textContent,/프로젝트test.*세션Synthetic session 36.*주제Topic 12.*질문Question 12/);
+  const only=app.elements.get('mind-actions').querySelectorAll('button').find(node=>node.textContent==='이 세션만 보기');assert.ok(only);
+  only.click();
+  assert.equal(app.state().rootKind,undefined);assert.equal(app.selected('session').dataset.depth,'0','the session is the root now');
+  assert.equal(app.nodes('project').length,0);
+  assert.equal(app.selected('topic').dataset.key,'topic:topic-12');assert.equal(app.selected('question').dataset.key,data.selection.question,'the open path survives re-rooting');
+  assert.equal(app.selected('question').getAttribute('aria-expanded'),'true','answers open once the session is the root');
+  const up=app.elements.get('mind-selection').querySelector('.breadcrumb-up');assert.equal(up.textContent,'test');
+  up.click();
+  assert.equal(app.state().rootKind,'project');assert.equal(app.elements.get('project').value,'test');
+  assert.equal(app.nodes('project').length,1);assert.equal(app.selected('session').dataset.key,data.sessionId);
+  assert.equal(app.selected('topic').dataset.key,'topic:topic-12');
+  app.selected('session').click();
+  assert.equal(app.state().session,'','clicking the open session branch folds it');assert.equal(app.nodes('topic').length,0);
+  assert.equal(app.nodes('session').length,48);
+});
+
+test('the project root is restored, a double-click re-roots, the root climbs up and "모든 프로젝트" returns to the session tree',async()=>{
+  const data=fixture(),storage=new Map([[stateKey,JSON.stringify({...data.selection,rootKind:'project',filters:{query:'',project:'test'}})]]);
+  const app=browser({data,storage});await settle();
+  assert.equal(app.nodes('project').length,1);assert.equal(app.selected('session').dataset.depth,'1');
+  assert.equal(app.selected('question').dataset.key,data.selection.question);
+  const before=cameraOf(app);
+  app.selected('session').dispatchEvent({type:'dblclick',preventDefault(){}});
+  assert.equal(app.state().rootKind,undefined);assert.equal(app.selected('session').dataset.depth,'0');
+  assert.notDeepEqual(cameraOf(app),before,'a new root is fitted afresh');
+  app.selected('session').click();
+  assert.equal(app.state().rootKind,'project');assert.equal(app.nodes('project').length,1,'the session root climbs to its project');
+  change(app,'project','');
+  assert.equal(app.state().rootKind,undefined);assert.equal(app.selected('session').dataset.depth,'0','without a project the open session is the root again');
+  app.selected('session').click();
+  assert.equal(app.state().rootKind,'project');assert.equal(app.elements.get('project').value,'test');
+  app.nodes('project')[0].click();
+  assert.equal(app.elements.get('mind-session-picker').hidden,false,'the project root opens the session list');
+  assert.equal(app.state().sessionListOpen,true);
+  app.elements.get('mind-session-change').click();
+  assert.equal(app.nodes('project').length,1);
+  change(app,'project','');app.selected('session').click();
+  const fresh=browser({data});await settle();change(fresh,'project','');
+  assert.equal(fresh.elements.get('mind-session-picker').hidden,false,'no project and no session means the list');
+});
+
+test('under a project root the arrow keys open session branches and the search counts topics inside folded ones',async()=>{
+  const data=fixture(),app=browser({data});await settle();
+  change(app,'project','test');
+  const tree=app.elements.get('mind-tree'),press=key=>tree.dispatchEvent({type:'keydown',key,target:app.document.activeElement,preventDefault(){}});
+  app.nodes('session').find(node=>node.dataset.key===data.sessionId).focus();
+  press('ArrowRight');assert.equal(app.state().session,data.sessionId,'→ opens a session branch');
+  assert.equal(app.document.activeElement.dataset.key,data.sessionId);
+  press('ArrowRight');assert.equal(app.document.activeElement.dataset.kind,'topic');
+  press('ArrowLeft');press('ArrowLeft');assert.equal(app.state().session,'','← folds the open session branch');
+  app.elements.get('query').value='Topic 1';app.elements.get('query').dispatchEvent({type:'input'});
+  const folded=app.nodes('session').find(node=>node.dataset.key===data.sessionId);
+  assert.equal(folded.querySelector('.tree-hits').textContent,'검색 9','Topic 1 and Topic 10–17 match inside the folded session');
+  assert.equal(app.nodes('project').length,1,'the project root stays while searching');
+});
+
 test('offline answer evidence offers existing question details without raw quotation or network requests',async()=>{
   const data=answerEvidenceFixture();delete data.context.analysis.assistantEvidence['source-q12'][0].quotes;
   data.selection.page=0;

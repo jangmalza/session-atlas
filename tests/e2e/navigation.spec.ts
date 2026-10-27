@@ -40,6 +40,24 @@ test('tree branches, verified source panel and next question preserve original c
   await expect(frame.locator('#mind-tree [data-kind="question"][aria-pressed="true"] .name')).toHaveText('E2E question 01');
   await expect(frame.locator('#mind-links .mind-edge-active')).not.toHaveCount(0);
 });
+test('a project root shows sessions as branches and one session can become the root and climb back',async({page})=>{
+  await page.goto('/?view=graph');const frame=page.frameLocator('#live-frame');
+  const project=(await frame.locator('#project option').nth(1).getAttribute('value'))!;
+  await frame.locator('#project').selectOption(project);
+  await expect(frame.locator('#mind-tree [data-kind="project"]')).toHaveText(new RegExp(project));
+  await expect(frame.locator('#mind-session-picker')).toBeHidden();
+  const branches=frame.locator('#mind-tree [data-kind="session"]');await expect(branches.first()).toBeVisible();
+  await branches.first().click();
+  await expect(frame.locator('#mind-tree [data-kind="session"][aria-pressed="true"]')).toHaveCount(1);
+  await expect(frame.locator('#mind-tree .mind-node[data-depth="2"]').first()).toBeVisible();
+  await frame.locator('#mind-actions button', {hasText:'이 세션만 보기'}).click();
+  await expect(frame.locator('#mind-tree [data-kind="session"][data-depth="0"]')).toHaveCount(1);
+  await expect(frame.locator('#mind-tree [data-kind="project"]')).toHaveCount(0);
+  await frame.locator('#mind-tree [data-kind="session"][data-depth="0"]').click();
+  await expect(frame.locator('#mind-tree [data-kind="project"]')).toHaveCount(1);
+  await expect(frame.locator('#mind-tree [data-kind="session"][aria-pressed="true"]')).toHaveCount(1);
+  await expect(frame.locator('#project')).toHaveValue(project);
+});
 test('reader keeps its paging position across a reload and resumes from the saved place',async({page})=>{
   const frame=await selectQuestion(page);
   await frame.locator('#source-reader-newer').click();await expect(frame.locator('#source-reader-status')).toContainText('#8');
