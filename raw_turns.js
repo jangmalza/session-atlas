@@ -1,6 +1,6 @@
 /* Original-message chronology, never a stored topic or answers relationship. */
 const RawTurns = (()=>{
-  function create({document,fetch,live,page,card,openSource,redraw,remember,locate}) {
+  function create({document,fetch,live,page,card,openSource,redraw,remember,locate,layout}) {
     const byId=id=>document.getElementById(id),cache=new Map();let session=null,selection="",pendingMessage="",generation=0,needsLocate=false;
     function saved(){try{const value=JSON.parse(sessionStorage.getItem('session-atlas-raw-turn')||'null');if(value?.session===session?.id)selection=value.message||"";}catch(_){}}
     function store(){try{sessionStorage.setItem('session-atlas-raw-turn',JSON.stringify({session:session.id,message:selection}));}catch(_){}remember?.();}
@@ -21,9 +21,9 @@ const RawTurns = (()=>{
       if(pendingMessage && data?.turns){const found=turns.find(t=>t.request.messageId===pendingMessage || t.responses.some(r=>r.messageId===pendingMessage));if(found){selection=found.request.messageId;needsLocate=true;}pendingMessage="";}
       const chosen=turns.find(t=>t.request.messageId===selection),index=turns.indexOf(chosen);
       if(needsLocate && chosen){locate(index);needsLocate=false;store();}
-      byId('mind-canvas').classList.add('raw-chronology');
+      byId('mind-canvas').classList.add('raw-chronology');layout?.(true);
       byId('mind-topics-title').textContent='원문 묶음';byId('mind-questions-title').textContent='사용자 요청 · 원문순';
-      byId('mind-answers-title').textContent='이어진 어시스턴트 메시지';
+      byId('mind-answers-title').textContent='어시스턴트 응답 · 시간순';
       byId('mind-topic-groups').hidden=true;byId('mind-topic-editor').hidden=true;byId('mind-question-title-action').hidden=true;
       page(byId('mind-topics'),[{}],1,()=>card('저장된 원문 대화','의미 분석이 아닌 순서 묶음',true,()=>{},'raw-topic','raw:chronology'),'');
       page(byId('mind-questions'),turns,2,turn=>{const node=card(turn.request.preview||'사용자 요청',`원문 #${turn.request.index+1}`,turn===chosen,()=>select(turn),'raw-request',turn.request.messageId);node.dataset.messageId=turn.request.messageId;return node;},
@@ -32,8 +32,11 @@ const RawTurns = (()=>{
       byId('question-stepper').hidden=false;byId('question-previous').disabled=index<=0;byId('question-next').disabled=!turns.length||index>=turns.length-1;
       byId('question-position').textContent=index<0?`요청 ${turns.length}개`:`${index+1} / ${turns.length}`;
       byId('mind-step-2').disabled=!turns.length;byId('mind-step-3').disabled=!chosen;
-      byId('mind-session-notice').hidden=false;
-      byId('mind-session-notice').textContent='원문 순서 묶음 · 주제나 답변의 의미를 판단하지 않습니다. 기존 분석 노드·관계를 만들거나 변경하지 않습니다.';
+      const notice=byId('mind-session-notice');notice.hidden=false;notice.replaceChildren();
+      const note=document.createElement('span');note.textContent='원문 순서 묶음 · 분석 전 세션은 요청과 응답을 원문 순서로 보여줍니다. 주제 열은 분석 뒤에 생깁니다.';
+      const analyze=document.createElement('button');analyze.type='button';analyze.textContent='이 세션 분석';
+      analyze.disabled=byId('explorer-analyze').disabled;analyze.addEventListener('click',()=>byId('explorer-analyze').click());
+      notice.append(note,analyze);
       return true;
     }
     return {render,move(direction){const turns=cache.get(session?.id)?.turns||[],index=turns.findIndex(t=>t.request.messageId===selection),next=turns[index+direction];if(next)select(next);},

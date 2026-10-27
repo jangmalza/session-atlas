@@ -291,6 +291,15 @@ if(typeof document !== "undefined") (() => {
   let mindDrawFrame=0,mindReveal=null;
   let sourcePanelWasOpen=false;
   const mindHosts=["mind-sessions","mind-topics","mind-questions","mind-answers"];
+  // Sessions without analysis show three columns (session → request → response); the topic column waits for analysis.
+  const stageLabels={analysed:[["03 / QUESTIONS","03","질문"],["04 / ANSWERS","04","답변"]],raw:[["02 / REQUESTS","02","요청"],["03 / RESPONSES","03","응답"]]};
+  function rawSessionLayout(on) {
+    byId("mind-canvas").classList.toggle("raw-session",on);byId("mind-stage-nav").classList.toggle("raw-session",on);
+    for(const [index,[label,number,text]] of stageLabels[on?"raw":"analysed"].entries()) {
+      const column=byId(mindHosts[index+2]).closest(".mind-column");if(column)column.dataset.stageLabel=label;
+      const spans=byId("mind-step-"+(index+2)).querySelectorAll("span");if(spans[0])spans[0].textContent=number;if(spans[1])spans[1].textContent=text;
+    }
+  }
   const mindMotionQuery=window.matchMedia("(prefers-reduced-motion: reduce)");
   const mindMotionControl=byId("mind-reduce-motion");
   try {mindMotionControl.checked=sessionStorage.getItem("context-graph-reduced-motion")==="true";} catch (_) {}
@@ -839,8 +848,10 @@ if(typeof document !== "undefined") (() => {
     const canvas=byId("mind-canvas"),svg=byId("mind-links");svg.replaceChildren();
     if(mindSessionListOpen || !mindSession)return;
     svg.setAttribute("viewBox",`0 0 ${canvas.clientWidth} ${canvas.clientHeight}`);
-    for(let column=1;column<mindHosts.length;column++) {
-      const fromId=mindHosts[column-1],toId=mindHosts[column];
+    const raw=canvas.classList.contains("raw-session"),columns=raw?[0,2,3]:[0,1,2,3];
+    const revealColumn=reveal?(raw && reveal.column===1?2:reveal.column):null;
+    for(let step=1;step<columns.length;step++) {
+      const column=columns[step],fromId=mindHosts[columns[step-1]],toId=mindHosts[column];
       const from=byId(fromId).querySelector('.mind-node[aria-pressed="true"]');if(!from || !visibleMindNode(from))continue;
       const a=mindBox(from,canvas);
       for(const [index,to] of [...byId(toId).querySelectorAll(".mind-node")].filter(visibleMindNode).entries()) {
@@ -849,12 +860,12 @@ if(typeof document !== "undefined") (() => {
         const line=`M ${x1} ${y1} C ${mid} ${y1},${mid} ${y2},${x2} ${y2}`;
         const focused=to.getAttribute("aria-pressed")==="true" || column===3 && byId(toId).querySelectorAll('.mind-node[aria-pressed="true"]').length===0;
         const path=svgEl("path",{d:line,class:"mind-edge"+(focused?" mind-edge-active":"")+(evidence?" mind-evidence-edge":""),pathLength:1,"data-column":column});
-        if(reveal && column===reveal.column && !evidence) {path.classList.add("mind-edge-reveal");path.style.setProperty("--mind-delay",`${index*38-elapsed}ms`);}
+        if(reveal && column===revealColumn && !evidence) {path.classList.add("mind-edge-reveal");path.style.setProperty("--mind-delay",`${index*38-elapsed}ms`);}
         svg.append(path);
       }
     }
     if(reveal) {
-      const nodes=[...byId(mindHosts[reveal.column]).querySelectorAll(".mind-node")];
+      const nodes=[...byId(mindHosts[revealColumn]).querySelectorAll(".mind-node")];
       for(const [index,node] of nodes.entries()) {
         if(node.classList.contains("mind-node-reveal"))continue;
         node.style.setProperty("--mind-delay",`${130+index*38-elapsed}ms`);node.classList.add("mind-node-reveal");
@@ -876,7 +887,7 @@ if(typeof document !== "undefined") (() => {
     const session=catalog.find(session=>session.id===mindSession),group=qaGroups.find(group=>group.sessionId===mindSession);
     explorer.updateSession(session?.id || "");
     byId('explorer-analyze').disabled=!session || !liveCatalog || window.parent===window;
-    byId('mind-canvas').classList.remove('raw-chronology');
+    byId('mind-canvas').classList.remove('raw-chronology');rawSessionLayout(false);
     byId('mind-answers-title').textContent='답변 · 근거';
     syncSessionViewControls();
     byId("session-mindmap").setAttribute("aria-label",mindSessionListOpen?"세션 목록":"세션 마인드맵");
@@ -1404,7 +1415,7 @@ if(typeof document !== "undefined") (() => {
     getSessions:catalogRows,getTargets:searchTargets,onNavigate:navigateExplorer,onLayout:centerMindSelection,
     onFullPage:(session,message)=>{rememberMind();if(window.parent!==window)window.parent.postMessage({type:message?"context-graph-open-source":"context-graph-open-session",session,...(message?{message}:{})},location.origin);
       else location.assign("./?"+new URLSearchParams({view:"timeline",session,...(message?{message}:{})}));}});
-  const rawTurns=RawTurns.create({document,fetch,live:liveCatalog,page:mindPage,card:mindCard,
+  const rawTurns=RawTurns.create({document,fetch,live:liveCatalog,page:mindPage,card:mindCard,layout:rawSessionLayout,
     openSource:(sid,message)=>explorer.openReader(sid,message),redraw:()=>{if(mode==='mind')renderMind();},remember:rememberMind,
     locate:index=>{mindPages[2]=Math.max(0,Math.floor(index/8));mindPages[3]=0;}});
   const requested=new URLSearchParams(location.hash.slice(1)).get("node");

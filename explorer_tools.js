@@ -34,7 +34,33 @@ const SessionAtlasTools = (() => {
     const button=(text,fn)=>{const e=el("button",text);e.type="button";e.addEventListener("click",fn);return e;};
     const title=sid=>{const s=getSessions().find(s=>s.id===sid);return s?.displayTitle||s?.title||"세션을 찾을 수 없습니다";};
     let selectedSession="",reader=null,serial=0,lastRequest=null,searchSerial=0,searchPage=null,searchQuery="",scrollTimer=0;
+    let pageSize=7,follow=false,followTimer=0,expanded=false;
     const panel=byId("source-reader"),body=byId("source-reader-body");
+    const sizes={normal:"14px",large:"17px",largest:"20px"};
+    function applySize(value){const size=sizes[value]?value:"normal";document.body.style.setProperty("--reader-size",sizes[size]);byId("source-reader-size").value=size;}
+    try {applySize(storage?.getItem("context-graph-reading-size"));} catch (_) {applySize("normal");}
+    function syncReaderControls(){
+      byId("source-reader-older").textContent=`앞선 ${pageSize}개`;byId("source-reader-newer").textContent=`다음 ${pageSize}개`;
+      byId("source-reader-page-size").textContent=pageSize===100?"7개씩 보기":"100개씩 보기";byId("source-reader-page-size").setAttribute("aria-pressed",String(pageSize===100));
+      byId("source-reader-follow").checked=follow;
+      byId("source-reader-expand").textContent=expanded?"기본 높이":"전체 높이";byId("source-reader-expand").setAttribute("aria-pressed",String(expanded));
+      document.body.classList.toggle("reader-expanded",expanded && !panel.hidden);
+    }
+    function stopFollow(){follow=false;clearTimeout(followTimer);followTimer=0;}
+    // Following polls this session's total only; other sessions' collection never reloads the panel.
+    async function pollFollow(){
+      followTimer=0;
+      if(!follow || panel.hidden || !reader)return;
+      try {
+        const response=await fetch("timeline/messages.json?"+new URLSearchParams({session:reader.session.id,limit:"1"}),{cache:"no-store"});
+        const value=response.ok?await response.json():null;
+        if(follow && reader && value?.session?.id===reader.session.id && value.total>reader.total){
+          const atEnd=body.scrollHeight-body.scrollTop-body.clientHeight<120;
+          await openReader(reader.session.id,"",null,{scrollToEnd:atEnd,quiet:true});
+        }
+      } catch (_) {}
+      if(follow && !panel.hidden && !followTimer)followTimer=setTimeout(pollFollow,2000);
+    }
     function updateButtons(){
       const exists=!!getSessions().find(s=>s.id===selectedSession),saved=nav.snapshot();
       byId("explorer-star").disabled=!exists;
@@ -47,25 +73,26 @@ const SessionAtlasTools = (() => {
       selectedSession=session||"";updateButtons();
       if((reader?.session.id || lastRequest?.session) && (reader?.session.id || lastRequest?.session)!==selectedSession)closeReader();
     }
-    function closeReader(){serial++;reader=null;lastRequest=null;clearTimeout(scrollTimer);panel.hidden=true;document.body.classList.remove("has-source-reader");onLayout?.();}
+    function closeReader(){serial++;reader=null;lastRequest=null;clearTimeout(scrollTimer);stopFollow();expanded=false;panel.hidden=true;document.body.classList.remove("has-source-reader");syncReaderControls();onLayout?.();}
     function unavailable(message){
       serial++;reader=null;lastRequest=null;panel.hidden=false;document.body.classList.add("has-source-reader");
       body.replaceChildren(el("p",message,"reader-empty"));byId("source-reader-title").textContent="원문 연결 확인";
-      byId("source-reader-status").textContent="";byId("source-reader-retry").hidden=true;
-      for(const id of ["source-reader-older","source-reader-newer","source-reader-full"])byId(id).disabled=true;
-      onLayout?.();
+      byId("source-reader-status").textContent="";byId("source-reader-retry").hidden=true;stopFollow();
+      for(const id of ["source-reader-older","source-reader-newer","source-reader-latest","source-reader-full"])byId(id).disabled=true;
+      syncReaderControls();onLayout?.();
     }
-    async function openReader(session,message="",offset=null) {
+    async function openReader(session,message="",offset=null,{scrollToEnd=false,quiet=false}={}) {
       if(!live){unavailable("원문은 실행 중인 뷰어에서 읽을 수 있습니다.");return;}
       if(!validId(session)||message && !validId(message))return;
-      const request=++serial;lastRequest={session,message,offset};reader=null;
+      const request=++serial;lastRequest={session,message,offset};const previous=reader;reader=null;
+      if(previous && previous.session.id!==session)stopFollow();
       panel.hidden=false;document.body.classList.add("has-source-reader");
       byId("source-reader-title").textContent=title(session);
-      byId("source-reader-status").textContent="원문을 불러오는 중…";
-      body.replaceChildren();byId("source-reader-retry").hidden=true;
-      for(const id of ["source-reader-older","source-reader-newer","source-reader-full"])byId(id).disabled=true;
-      onLayout?.();
-      const query=new URLSearchParams({session,limit:"7"});
+      if(!quiet){byId("source-reader-status").textContent="원문을 불러오는 중…";body.replaceChildren();}
+      byId("source-reader-retry").hidden=true;
+      for(const id of ["source-reader-older","source-reader-newer","source-reader-latest","source-reader-full"])byId(id).disabled=true;
+      syncReaderControls();onLayout?.();
+      const query=new URLSearchParams({session,limit:String(pageSize)});
       if(offset!==null)query.set("offset",String(offset));else if(message)query.set("message",message);
       try {
         const response=await fetch("timeline/messages.json?"+query,{cache:"no-store"});if(!response.ok)throw new Error("Unavailable");
@@ -90,9 +117,12 @@ const SessionAtlasTools = (() => {
         body.replaceChildren(fragment);
         byId("source-reader-older").disabled=value.offset===0;
         byId("source-reader-newer").disabled=value.offset+value.messages.length>=value.total;
+        byId("source-reader-latest").disabled=value.offset+value.messages.length>=value.total;
         byId("source-reader-full").disabled=false;
         if(target){nav.remember(session,target.id);updateButtons();}
-        targetElement?.scrollIntoView({block:"center",behavior:"auto"});onLayout?.();
+        if(scrollToEnd)body.scrollTop=body.scrollHeight;else targetElement?.scrollIntoView({block:"center",behavior:"auto"});
+        syncReaderControls();onLayout?.();
+        if(follow && !followTimer)followTimer=setTimeout(pollFollow,2000);
       } catch (_) {
         if(request!==serial)return;
         byId("source-reader-status").textContent="원문을 불러오지 못했습니다. 다시 시도해 주세요.";
@@ -108,8 +138,20 @@ const SessionAtlasTools = (() => {
     });
     byId("source-reader-close").addEventListener("click",closeReader);
     byId("source-reader-retry").addEventListener("click",()=>{if(lastRequest)openReader(lastRequest.session,lastRequest.message,lastRequest.offset);});
-    byId("source-reader-older").addEventListener("click",()=>{if(reader)openReader(reader.session.id,"",Math.max(0,reader.offset-7));});
-    byId("source-reader-newer").addEventListener("click",()=>{if(reader)openReader(reader.session.id,"",reader.offset+reader.messages.length);});
+    byId("source-reader-older").addEventListener("click",()=>{if(reader){stopFollow();openReader(reader.session.id,"",Math.max(0,reader.offset-pageSize));}});
+    byId("source-reader-newer").addEventListener("click",()=>{if(reader){stopFollow();openReader(reader.session.id,"",reader.offset+reader.messages.length);}});
+    byId("source-reader-latest").addEventListener("click",()=>{if(reader)openReader(reader.session.id,"",null,{scrollToEnd:true});});
+    byId("source-reader-page-size").addEventListener("click",()=>{
+      pageSize=pageSize===100?7:100;syncReaderControls();
+      if(reader)openReader(reader.session.id,lastRequest?.message||"",null);
+    });
+    byId("source-reader-follow").addEventListener("change",()=>{
+      follow=byId("source-reader-follow").checked;syncReaderControls();
+      if(follow && reader)openReader(reader.session.id,"",null,{scrollToEnd:true});else if(!follow)stopFollow();
+    });
+    byId("source-reader-size").addEventListener("change",()=>{applySize(byId("source-reader-size").value);try {storage?.setItem("context-graph-reading-size",byId("source-reader-size").value);} catch (_) {}});
+    byId("source-reader-expand").addEventListener("click",()=>{expanded=!expanded;syncReaderControls();onLayout?.();});
+    document.addEventListener("keydown",event=>{if(event.key==="Escape" && expanded){expanded=false;syncReaderControls();onLayout?.();}});
     byId("source-reader-full").addEventListener("click",()=>{if(lastRequest)onFullPage(lastRequest.session,lastRequest.message);});
     byId("explorer-star").addEventListener("click",()=>{if(selectedSession){nav.toggle(selectedSession);updateButtons();onLibraryChange?.();}});
     byId("explorer-resume").addEventListener("click",()=>{const message=nav.position(selectedSession);if(message)openReader(selectedSession,message);});
