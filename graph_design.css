@@ -16,9 +16,6 @@ button[aria-pressed=true]{color:var(--accent)}
 button:disabled{opacity:.55;border-style:dashed;color:var(--muted);cursor:not-allowed}
 button:disabled:hover{background:var(--panel);border-color:var(--line)}
 .controls{padding:12px 26px;align-items:center}
-.controls input{min-width:120px}
-.controls select{max-width:220px;min-width:110px}
-#reset{font-size:12px;white-space:nowrap;color:var(--muted)}
 .layout{padding:0 22px 20px;gap:24px}
 main{max-width:1100px;padding:0 4px 24px}
 body.has-detail .layout{grid-template-columns:minmax(0,1fr)}
@@ -26,18 +23,6 @@ body.has-detail .layout{grid-template-columns:minmax(0,1fr)}
 .hint{font-size:12px}
 #info{font-family:var(--mono)}
 #view-info{font-size:12px;margin:16px 0}
-.catalog-scope{margin:0;padding:11px 0;align-items:center;gap:12px;border:0;border-bottom:1px solid var(--line);border-radius:0;background:transparent}
-.catalog-scope label{display:flex;align-items:center;gap:7px;min-width:0;font-size:12px;color:var(--muted)}
-.catalog-scope select{font-size:12px;padding:6px 8px;max-width:340px}
-.context-help{margin:0 0 0 auto;padding:0;border:0;max-width:480px}
-.context-help summary{font-size:11px}
-.context-help p{margin:8px 0;font-size:12px}
-.mind-help{justify-content:flex-start;gap:10px;padding-bottom:8px}
-.mind-help>.hint{margin:0;font-size:12px}
-.mind-help details{margin:0;padding:0;border:0;font-size:12px}
-.mind-help summary{font-size:11px}
-.mind-help details p{max-width:680px;padding:12px;background:var(--panel);border:1px solid var(--line);margin:8px 0}
-.mind-motion-control{margin-left:auto;font-size:11px}
 #mind-selection{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:9px 0 12px;margin:0;border:0;border-bottom:1px dotted var(--line);border-radius:0;background:transparent;font-size:12px}
 #mind-selection .breadcrumb-label{font-size:10px;color:var(--muted)}
 #mind-selection strong{font-weight:600;max-width:42%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -90,19 +75,9 @@ svg .node-title{font-size:15px}
  .header-notes{justify-items:start;gap:5px}
  #totals{font-size:10px}
  .controls{padding:10px 16px;gap:7px}
- .controls input{flex-basis:calc(100% - 104px);order:0}
- .controls #reset{order:1}
- .controls select{order:2;flex:1;min-width:0;max-width:100%;font-size:12px}
  .layout{padding:0 12px 16px}
  main{padding:0 2px 18px}
  #info{font-size:10px}
- .catalog-scope{gap:8px;padding:9px 0}
- .catalog-scope label{font-size:11px}
- .catalog-scope select{max-width:100%}
- .context-help{margin:0}
- #catalog-parent-filter{flex-basis:100%}
- .mind-help{gap:7px}
- .mind-motion-control{margin-left:0;font-size:10px}
  #mind-selection{gap:5px;font-size:11px}
  #mind-selection strong{max-width:70%}
  .right{padding:0 18px 20px}
@@ -112,16 +87,8 @@ svg .node-title{font-size:15px}
 .viewer-header{padding:16px 26px 12px}
 :root[data-embedded=true] .viewer-header{display:none}
 .controls{padding:10px 26px;gap:8px}
-#totals{margin-left:auto;font:11px/1.6 var(--mono);color:var(--muted);white-space:nowrap}
-.scope-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px 18px;padding:9px 0;border-bottom:1px solid var(--line)}
-.scope-row>.catalog-scope{flex:1 1 320px;margin:0;padding:0;border:0}
-.scope-row>.explorer-toolbar{margin-left:auto}
-.mind-help{padding:6px 0 4px}
 #mind-selection{padding:8px 0 10px}
 .hint,#view-info{font-size:13px}
-.catalog-scope label{font-size:13px}
-.catalog-scope select{font-size:13px;padding:6px 9px}
-.context-help summary,.mind-help summary{font-size:12px}
 .mind-meta{font-size:12px}
 .mind-activity{font-size:11px}
 #mind-selection .breadcrumb-label,.mind-selection-note{font-size:11px}
@@ -133,9 +100,36 @@ svg .node-title{font-size:15px}
  h1{font-size:22px;margin:2px 0 4px}
  .header-notes{display:flex;align-items:center;gap:10px}
  .controls{padding:8px 12px}
- #totals{flex-basis:100%;order:3;white-space:normal;font-size:10px}
- .scope-row{gap:6px 10px;padding:8px 0}
- .scope-row>.catalog-scope{flex-basis:100%}
- .scope-row>.explorer-toolbar{margin-left:0}
- .mind-help{padding:4px 0}
+}
+
+/* Two rows above the tree: the search box with a help popover and a menu, then the root choice, the open path and the branch menus. */
+.controls{display:flex;align-items:center;flex-wrap:nowrap;gap:8px;padding:10px 26px}
+.controls input{flex:1 1 160px;min-width:0}
+.viewer-help>summary,.viewer-menu>summary{font-size:13px;padding:8px 12px;line-height:20px}
+.viewer-help>summary{min-width:38px;text-align:center;font-weight:700}
+.viewer-help .node-management-content,.viewer-menu .node-management-content{left:auto;right:0;width:min(380px,calc(100vw - 24px))}
+.viewer-help .node-management-content p{font-size:13px;line-height:1.8;margin:0 0 10px}
+.viewer-help .node-management-content p:last-child{margin-bottom:0}
+.viewer-menu .node-management-content{display:grid;gap:12px}
+.menu-field{display:grid;gap:4px;font-size:12px;color:var(--muted)}
+.menu-field select{width:100%;min-width:0;max-width:none;font-size:13px;padding:7px 9px}
+.viewer-menu .catalog-scope{display:grid;gap:8px;margin:0;padding:0;border:0;background:transparent}
+.viewer-menu .catalog-scope .hint{margin:0;font-size:12px}
+.viewer-menu .catalog-scope .hint:empty{display:none}
+.viewer-menu .explorer-toolbar{display:grid;gap:6px}
+.viewer-menu .explorer-toolbar button{width:100%;text-align:left;margin:0}
+.viewer-menu .mind-motion-control{display:flex;justify-content:flex-start;gap:8px;margin:0;font-size:12px}
+.viewer-menu .mind-motion-control input{flex:none;width:16px;height:16px;margin:0;padding:0;accent-color:var(--accent)}
+.viewer-menu #reset{width:100%;text-align:left;margin:0;font-size:12px;color:var(--muted)}
+.viewer-menu #totals{margin:0;font:11px/1.6 var(--mono);color:var(--muted);white-space:normal}
+.mind-tools{padding:7px 0 8px}
+.mind-tools #mind-selection{flex:1 1 260px;min-width:0;margin:0;padding:0;border:0}
+.mind-tools .node-management-content{left:auto;right:0}
+.node-management-content .question-stepper{display:flex;align-items:center;justify-content:space-between;gap:6px;margin:10px 0 0}
+.node-management-content .question-stepper button{flex:none;width:auto;margin:0;padding:4px 12px;font-size:15px}
+.node-management-content .question-stepper span{flex:1;white-space:nowrap;font-size:12px}
+#mind-session-editor .node-management-content>button{width:100%;text-align:left;margin:0 0 6px}
+@media(max-width:700px){
+ .controls{padding:8px 12px;gap:6px}
+ .viewer-help>summary,.viewer-menu>summary{padding:7px 9px;font-size:12px}
 }

@@ -3,9 +3,11 @@ const sid='11111111-1111-4111-8111-111111111111';
 test.beforeEach(async({context})=>{
   await context.route('**/*',route=>{const url=new URL(route.request().url());return url.hostname==='127.0.0.1'&&url.port==='18765'?route.continue():route.abort();});
 });
+async function ensureOpen(details:any){if(!(await details.evaluate((e:any)=>e.open)))await details.locator('summary').first().click();}
+async function selectProject(frame:any,value:string){await ensureOpen(frame.locator('#viewer-menu'));await frame.locator('#project').selectOption(value);await expect(frame.locator('#viewer-menu')).toHaveJSProperty('open',false);}
 async function selectQuestion(page:any){
   await page.goto('/?view=graph');const frame=page.frameLocator('#live-frame');
-  await frame.locator('#project').selectOption('E2E');
+  await selectProject(frame,'E2E');
   await frame.locator(`#mind-tree [data-kind="session"][data-key="${sid}"]`).click();
   await frame.locator('#mind-actions button', {hasText:'이 세션만 보기'}).click();
   await expect(frame.locator('#mind-tree [data-kind="session"][data-depth="0"]')).toHaveCount(1);
@@ -23,8 +25,9 @@ test('tree branches, verified source panel and next question preserve original c
   expect(Math.min(...topics.map(b=>b.left))).toBeGreaterThan(root.right);
   expect(Math.min(...questions.map(b=>b.left))).toBeGreaterThan(Math.max(...topics.map(b=>b.right)));
   expect(questions[1].top).toBeGreaterThan(questions[0].bottom-1);
-  await frame.locator('#question-next').click();
+  await ensureOpen(frame.locator('#mind-question-title-action>.node-management'));await frame.locator('#question-next').click();
   await expect(frame.locator('.reader-target .reader-original')).toHaveText('Synthetic question 001 literal <img src=x>.');
+  await frame.locator('#mind-question-title-action>.node-management>summary').click();
   await page.screenshot({path:testInfo.outputPath('verified-source-panel.png')});
   await frame.locator('#mind-tree [data-kind="question"][aria-pressed="true"]').focus();
   await page.keyboard.press('ArrowDown');
@@ -53,7 +56,7 @@ test('a project root shows sessions as branches and one session can become the r
   await frame.locator('#mind-tree [data-kind="project"]').first().click();
   await expect(frame.locator('#mind-tree [data-kind="session"]').first()).toBeVisible();
   const project=(await frame.locator('#project option').nth(1).getAttribute('value'))!;
-  await frame.locator('#project').selectOption(project);
+  await selectProject(frame,project);
   await expect(frame.locator('#mind-tree [data-kind="project"]')).toHaveText(new RegExp(project));
   await expect(frame.locator('#mind-session-picker')).toHaveCount(0);
   const branches=frame.locator('#mind-tree [data-kind="session"]');await expect(branches.first()).toBeVisible();
@@ -80,20 +83,21 @@ test('reader keeps its paging position across a reload and resumes from the save
   const first=await frame.locator('#source-reader-body .reader-message').first().getAttribute('data-message-id');
   await frame.locator('#source-reader-page-size').click();await expect(frame.locator('#source-reader-status')).toContainText('/ 350');
   await page.reload();const again=page.frameLocator('#live-frame');
-  await again.locator('#explorer-resume').click();await expect(again.locator('#source-reader')).toBeVisible();
+  await ensureOpen(again.locator('#viewer-menu'));await again.locator('#explorer-resume').click();await expect(again.locator('#source-reader')).toBeVisible();
   await expect(again.locator('#source-reader-body .reader-target')).toHaveAttribute('data-message-id',first!);
   await expect(page.locator('nav [data-view]')).toHaveCount(0);
 });
 test('search follows stored evidence and bookmarks persist without touching titles',async({page})=>{
   await page.goto('/?view=graph');const frame=page.frameLocator('#live-frame');
-  await frame.locator('#explorer-search').click();await frame.locator('#explorer-search-query').fill('Synthetic question 009');
+  await ensureOpen(frame.locator('#viewer-menu'));await frame.locator('#explorer-search').click();await frame.locator('#explorer-search-query').fill('Synthetic question 009');
   await frame.locator('#explorer-search-form button').click();
   await frame.locator('.explorer-result button').filter({hasText:'마인드맵'}).first().click();
   await expect(frame.locator('#mind-tree [data-kind="question"][aria-pressed="true"] .name')).toHaveText('E2E question 09');
   await expect(frame.locator('.reader-target .reader-original')).toContainText('question 009');
-  await frame.locator('#explorer-star').click();await page.reload();
-  await expect(page.frameLocator('#live-frame').locator('#explorer-star')).toHaveAttribute('aria-pressed','true');
-  await page.frameLocator('#live-frame').locator('#explorer-resume').click();
+  await ensureOpen(frame.locator('#mind-session-editor>.node-management'));await frame.locator('#explorer-star').click();await page.reload();
+  const back=page.frameLocator('#live-frame');
+  await expect(back.locator('#explorer-star')).toHaveAttribute('aria-pressed','true');
+  await ensureOpen(back.locator('#viewer-menu'));await back.locator('#explorer-resume').click();
   await expect(page.frameLocator('#live-frame').locator('#source-reader')).toBeVisible();
 });
 test('management menus and mobile layouts remain usable',async({page})=>{
@@ -110,7 +114,7 @@ test('management menus and mobile layouts remain usable',async({page})=>{
 test('unanalysed conversations show explicit chronological turns without generating analysis',async({page,request})=>{
   const before=await (await request.get('/status.json')).json();
   await page.goto('/?view=graph');const frame=page.frameLocator('#live-frame');
-  await frame.locator('#project').selectOption('RawFixture');
+  await selectProject(frame,'RawFixture');
   await frame.locator('#mind-tree [data-kind="session"][data-key="22222222-2222-4222-8222-222222222222"]').click();
   await expect(frame.locator('#mind-session-notice')).toContainText('원문 순서 묶음');
   await expect(frame.locator('#mind-tree [data-kind="raw-group"]')).toHaveCount(2);
@@ -120,7 +124,7 @@ test('unanalysed conversations show explicit chronological turns without generat
   await frame.locator('#mind-tree [data-kind="raw-request"]').first().click();
   await expect(frame.locator('#mind-tree [data-kind="raw-response"]')).toHaveCount(1);
   await expect(frame.locator('.reader-target .reader-original')).toHaveText('Unanalysed raw message 0');
-  for(let i=0;i<8;i++)await frame.locator('#question-next').click();
+  await frame.locator('#mind-tree [data-kind="raw-request"]').nth(8).click();
   await expect(frame.locator('#mind-tree [data-kind="raw-request"][aria-pressed="true"]')).toHaveCount(1);
   await expect(frame.locator('.reader-target .reader-original')).toHaveText('Unanalysed raw message 16');
   const after=await (await request.get('/status.json')).json();
@@ -146,7 +150,7 @@ test('Claude Code sessions share the catalog and source reader without semantic 
   await frame.locator('#query').fill('Claude Code');
   await expect(frame.locator('#mind-tree [data-kind="project"].mind-hit')).toHaveCount(1);
   await expect(frame.locator('#mind-tree [data-kind="project"].mind-hit')).toContainText('ClaudeFixture');
-  await frame.locator('#query').fill('');await frame.locator('#project').selectOption('ClaudeFixture');
+  await frame.locator('#query').fill('');await selectProject(frame,'ClaudeFixture');
   await frame.locator('#mind-tree [data-kind="session"]').first().click();
   await expect(frame.locator('#mind-actions .session-brief-meta')).toContainText('Claude Code');
   await frame.locator('#mind-tree [data-kind="raw-request"]').first().click();
@@ -174,8 +178,9 @@ test('selected-session analysis requires consent and updates only after an isola
   let starts=0;page.on('request',request=>{if(request.url().endsWith('/analysis/start.json'))starts++;});
   await page.goto('/?view=graph');const frame=page.frameLocator('#live-frame');
   const raw='22222222-2222-4222-8222-222222222222';
-  await frame.locator('#project').selectOption('RawFixture');
-  await frame.locator(`#mind-tree [data-kind="session"][data-key="${raw}"]`).click();await frame.locator('#explorer-analyze').click();
+  await selectProject(frame,'RawFixture');
+  await frame.locator(`#mind-tree [data-kind="session"][data-key="${raw}"]`).click();
+  await ensureOpen(frame.locator('#mind-session-editor>.node-management'));await frame.locator('#explorer-analyze').click();
   await expect(page.locator('#analysis-session-id')).toHaveText(raw);
   await expect(page.locator('#analysis-start')).toBeDisabled();
   await expect(page.locator('#analysis-blocked')).toContainText('로그인 상태');
@@ -191,7 +196,7 @@ test('selected-session analysis requires consent and updates only after an isola
   await page.locator('#analysis-run-close').click();
   await expect(frame.locator('#mind-tree [data-kind="session"]')).toHaveAttribute('data-key',raw);
   await expect(frame.locator('#mind-tree [data-kind="topic"]').first()).toContainText('Synthetic generated topic',{timeout:15000});
-  await frame.locator('#explorer-analyze').click();
+  await ensureOpen(frame.locator('#mind-session-editor>.node-management'));await frame.locator('#explorer-analyze').click();
   await expect(page.locator('#analysis-mode')).toHaveValue('decisions');
   await page.locator('#analysis-mode').selectOption('codex');
   await expect(page.locator('#analysis-blocked')).toContainText('이미 분석된 세션');

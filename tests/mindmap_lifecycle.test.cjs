@@ -1061,17 +1061,15 @@ test('branches connect each parent to its visible children and only a newly open
 
 const cameraOf=app=>{const match=app.elements.get('mind-tree').style.transform.match(/translate\((-?[\d.]+)px,(-?[\d.]+)px\) scale\(([\d.]+)\)/);return match && {x:Number(match[1]),y:Number(match[2]),k:Number(match[3])};};
 
-test('a session opens fitted around its root; branches pan the camera and the buttons change only the scale',async()=>{
+test('a session opens fitted around its root; branches pan the camera and zooming changes only the scale',async()=>{
   const data=fixture(),app=browser({data,storage:new Map([[stateKey,JSON.stringify(data.selection)]])});await settle();
   const first=cameraOf(app);assert.ok(first,'the tree carries a transform');
-  assert.ok(first.k>0 && first.k<=1);assert.match(app.elements.get('mind-zoom-level').textContent,/^\d+%$/);
+  assert.ok(first.k>0 && first.k<=1);
   app.nodes('topic').find(node=>node.dataset.key==='topic:topic-3').click();
   const opened=cameraOf(app);assert.equal(opened.k,first.k,'opening a branch pans without rescaling');
-  app.elements.get('mind-zoom-in').click();assert.ok(cameraOf(app).k>opened.k);
-  app.elements.get('mind-zoom-out').click();assert.ok(Math.abs(cameraOf(app).k-opened.k)<1e-9);
-  app.elements.get('mind-zoom-reset').click();assert.equal(cameraOf(app).k,1);
+  const host=app.elements.get('mind-tree-host');
+  host.dispatchEvent({type:'wheel',deltaX:0,deltaY:-100,ctrlKey:true,clientX:120,clientY:80,preventDefault(){}});assert.ok(cameraOf(app).k>opened.k,'ctrl+wheel zooms in');
   app.elements.get('mind-fit').click();assert.ok(cameraOf(app).k<1,'the whole tree is taller than the box, so fitting shrinks it');
-  assert.equal(app.elements.get('mind-zoom-level').textContent,Math.round(cameraOf(app).k*100)+'%');
   const before=cameraOf(app);change(app,'project','test');app.nodes('session').find(card=>card.dataset.key==='session-37').click();app.rootHere();
   assert.notDeepEqual(cameraOf(app),before,'another session is fitted afresh');
   assert.equal(app.state().session,'session-37');
@@ -1377,4 +1375,17 @@ test('an item the user asked as a question is a question branch with its answer 
   const evidence=app.answers().find(card=>card.dataset.kind==='answer-evidence');
   assert.ok(evidence,'its verified assistant quote is an answer leaf');assert.equal(evidence.dataset.messageId,'raw-asked-answer');
   assert.deepEqual(data,before,'promotion must only change presentation');
+});
+
+test('the menu folds after a project choice or a reset, and the session menu holds the bookmark and analysis actions',async()=>{
+  const data=fixture(),app=browser({data});await settle();
+  const menu=app.elements.get('viewer-menu');menu.open=true;
+  change(app,'project','test');assert.equal(menu.open,false,'choosing a project closes the menu');
+  menu.open=true;app.elements.get('reset').click();assert.equal(menu.open,false,'resetting closes the menu');
+  menu.open=true;app.elements.get('explorer-saved').click();assert.equal(menu.open,false,'opening a dialog closes the menu');
+  assert.match(html,/id="viewer-menu"[\s\S]*id="project"[\s\S]*id="catalog-kind"[\s\S]*id="explorer-search"[\s\S]*id="explorer-resume"[\s\S]*id="mind-reduce-motion"[\s\S]*id="reset"[\s\S]*id="totals"/,'the menu holds the filters, explorer tools and settings');
+  assert.match(html,/id="mind-session-editor"[\s\S]*id="explorer-star"[\s\S]*id="explorer-analyze"[\s\S]*id="mind-session-name-details"/,'bookmark and analysis sit in the session menu');
+  assert.match(html,/id="mind-question-title-action"[\s\S]*id="question-previous"[\s\S]*id="question-next"[\s\S]*id="mind-answer-title-action"/,'the question stepper sits in the question menu');
+  assert.match(html,/id="mind-tree-host"[\s\S]*id="mind-tree"[\s\S]*id="mind-zoom"[\s\S]*id="mind-fit"/,'the fit button is an overlay inside the tree box');
+  assert.doesNotMatch(html,/mind-zoom-in|mind-zoom-out|mind-zoom-level|mind-zoom-reset|class="mind-help"|class="scope-row"/);
 });

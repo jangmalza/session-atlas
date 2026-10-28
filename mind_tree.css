@@ -5,9 +5,8 @@
 .mind-tree-host.mind-dragging #mind-tree,#mind-tree.mind-instant,.mind-motion-off #mind-tree{transition:none}
 body.has-source-reader .mind-tree-host{height:clamp(220px,34vh,520px)}
 #mind-tree{position:absolute;left:0;top:0;transform-origin:0 0;transition:transform .25s ease}
-.mind-zoom{display:flex;align-items:center;gap:3px}
-.mind-zoom button{font-size:12px;padding:5px 8px;min-width:28px}
-.mind-zoom span{font:11px/1 var(--mono);color:var(--muted);min-width:38px;text-align:center}
+#mind-zoom{position:absolute;right:8px;bottom:8px;z-index:5;display:flex;gap:4px}
+#mind-zoom button{font-size:12px;padding:5px 10px;background:var(--panel);box-shadow:0 2px 8px var(--shadow)}
 #mind-tree.searching .mind-node:not(.mind-hit):not(.depth-0),#mind-tree.searching .mind-note{opacity:.38}
 #mind-tree .mind-node.mind-hit{color:var(--accent);border-color:var(--accent)}
 #mind-tree .mind-node.mind-hit .name{font-weight:700}
@@ -44,7 +43,6 @@ body.has-source-reader .mind-tree-host{height:clamp(220px,34vh,520px)}
 .mind-evidence-edge.mind-edge-active{opacity:.75}
 .mind-tools{display:flex;align-items:center;flex-wrap:wrap;gap:6px 8px;padding:7px 0 8px;border-bottom:1px dotted var(--line)}
 .mind-tools .topic-editor,.mind-tools .item-title-action{margin:0;padding:0;border:0}
-.mind-tools .question-stepper{margin:0 0 0 auto;gap:4px}
 .mind-root-kind{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
 .mind-root-kind button{border:0;border-radius:0;font-size:12px;padding:5px 10px;background:var(--panel)}
 .mind-root-kind button+button{border-left:1px solid var(--line)}
@@ -62,11 +60,8 @@ button.session-preview{cursor:pointer}button.session-preview:hover{border-color:
 @media(max-width:700px){
  .mind-tree-host{height:clamp(260px,46vh,520px)}
  body.has-source-reader .mind-tree-host{height:clamp(180px,30vh,400px)}
- .mind-zoom{gap:2px}
- .mind-zoom span{display:none}
  #mind-tree .mind-node{font-size:12px;gap:5px;padding:3px 6px 4px}
  #mind-tree .mind-node .name{font-size:12px}
  .mind-tools{gap:5px 6px}
  .session-brief{grid-template-columns:minmax(0,1fr)}
- .mind-tools .question-stepper{margin-left:0;flex-basis:100%}
 }

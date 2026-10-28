@@ -693,7 +693,6 @@ if(typeof document !== "undefined") (() => {
   function applyCamera(animate=true) {
     treeEl.classList.toggle("mind-instant",!animate);
     treeEl.style.transform=`translate(${Math.round(mindCamera.x)}px,${Math.round(mindCamera.y)}px) scale(${mindCamera.k})`;
-    byId("mind-zoom-level").textContent=`${Math.round(mindCamera.k*100)}%`;
   }
   function fitTree(options={}) {
     if(!mindPlan)return;const rootEntry=mindPlan.nodes[0];
@@ -1319,11 +1318,14 @@ if(typeof document !== "undefined") (() => {
   // The project filter doubles as the root choice: a project roots the tree; the period tree keeps its root and only narrows.
   for(const [id,event] of [["query","input"],["project","change"]])byId(id).addEventListener(event,()=>{
     if(id==="project"){
+      byId("viewer-menu").open=false;
       if(mindRootKind!=="period"){mindRootKind="project";const current=catalogRows().find(row=>row.id===mindSession);mindProject=!byId("project").value && current?projectKey(current.project):"";}
       mindRootReturn="";
     }
     restoredMindFilters=null;render();rememberMind();});
-  byId("reset").addEventListener("click",()=>{for(const id of ["query","project"])byId(id).value="";mindRootKind="project";mindProject="";mindRootReturn="";mindWeek="";mindDay="";restoredMindFilters=null;render();rememberMind();});
+  // The menu folds away once it has done its job; the explorer dialogs open on top of the tree instead.
+  for(const id of ["explorer-search","explorer-saved","explorer-resume"])byId(id).addEventListener("click",()=>{byId("viewer-menu").open=false;});
+  byId("reset").addEventListener("click",()=>{byId("viewer-menu").open=false;for(const id of ["query","project"])byId(id).value="";mindRootKind="project";mindProject="";mindRootReturn="";mindWeek="";mindDay="";restoredMindFilters=null;render();rememberMind();});
   // 프로젝트 / 기간: which hierarchy the tree grows from. Switching keeps the chosen session where it belongs.
   for(const control of byId("mind-root-kind").querySelectorAll("button"))control.addEventListener("click",()=>{
     const current=catalogRows().find(row=>row.id===mindSession);
@@ -1436,9 +1438,6 @@ if(typeof document !== "undefined") (() => {
     treeHostEl.scrollLeft=0;treeHostEl.scrollTop=0;
     if(mindPlan){mindCamera={...mindCamera,x:mindCamera.x-dx,y:mindCamera.y-dy};applyCamera(false);}
   });
-  byId("mind-zoom-in").addEventListener("click",()=>zoomTree(1.25));
-  byId("mind-zoom-out").addEventListener("click",()=>zoomTree(0.8));
-  byId("mind-zoom-reset").addEventListener("click",()=>zoomTree(1/mindCamera.k));
   byId("mind-fit").addEventListener("click",()=>fitTree({min:.2}));
   // Arrow keys walk the visible branches in reading order; → opens or enters a branch, ← folds it or steps back.
   treeEl.addEventListener("keydown",event=>{
