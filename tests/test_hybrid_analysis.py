@@ -90,11 +90,11 @@ class HybridAnalysisTests(unittest.TestCase):
         self.assertFalse(missing.exists())
 
     def test_invalid_threshold_and_missing_key_fail_before_codex(self):
-        with patch.dict(os.environ,{'OPENAI_API_KEY':''}),patch.object(cg.subprocess,'run') as model:
+        with patch.dict(os.environ,{'OPENAI_API_KEY':''}),patch.object(ap,'_run') as model:
             with self.assertRaises(dt.DecisionsError):
                 ap.auto_analyze(self.con,SID,self.root/'cm',self.root,topic_classifier='decisions',allow_api=True)
             model.assert_not_called()
-        with patch.dict(os.environ,{'OPENAI_API_KEY':'fake-test-key'}),patch.object(cg.subprocess,'run') as model:
+        with patch.dict(os.environ,{'OPENAI_API_KEY':'fake-test-key'}),patch.object(ap,'_run') as model:
             with self.assertRaises(ValueError):
                 ap.auto_analyze(self.con,SID,self.root/'cm',self.root,topic_classifier='decisions',allow_api=True,topic_confidence=float('nan'))
             model.assert_not_called()
@@ -103,7 +103,7 @@ class HybridAnalysisTests(unittest.TestCase):
         self.save_source();before=self.tables();map_copy=deepcopy(self.source)
         with patch.dict(os.environ,{'OPENAI_API_KEY':'fake-test-key'}), \
              patch.object(cg.shutil,'which',side_effect=AssertionError('No Codex lookup')), \
-             patch.object(cg.subprocess,'run',side_effect=AssertionError('No model')), \
+             patch.object(ap,'_run',side_effect=AssertionError('No model')), \
              patch.object(dt,'classify_map',side_effect=lambda source,*a,**kw:self.overlay(source)) as classify:
             result=ap.auto_analyze(self.con,SID,self.root/'unused',self.root,topic_classifier='decisions',allow_api=True)
         self.assertIn('existing analysis preserved',result);self.assertEqual(classify.call_count,1)
@@ -114,7 +114,7 @@ class HybridAnalysisTests(unittest.TestCase):
         before=self.tables()
         with patch.dict(os.environ,{'OPENAI_API_KEY':'fake-test-key'}), \
              patch.object(cg.shutil,'which',side_effect=lambda name:name), \
-             patch.object(cg.subprocess,'run',side_effect=self.fake_process), \
+             patch.object(ap,'_run',side_effect=self.fake_process), \
              patch.object(dt,'classify_map',side_effect=lambda source,*a,**kw:self.overlay(source)):
             ap.auto_analyze(self.con,SID,self.root/'cm',self.root,topic_classifier='decisions',allow_api=True)
         saved=json.loads(self.con.execute('SELECT map_json FROM session_maps').fetchone()[0])
@@ -127,7 +127,7 @@ class HybridAnalysisTests(unittest.TestCase):
         before=self.tables()
         with patch.dict(os.environ,{'OPENAI_API_KEY':'fake-test-key'}), \
              patch.object(cg.shutil,'which',side_effect=lambda name:name), \
-             patch.object(cg.subprocess,'run',side_effect=self.fake_process), \
+             patch.object(ap,'_run',side_effect=self.fake_process), \
              patch.object(dt,'classify_map',side_effect=dt.DecisionsError('Synthetic failure')):
             with self.assertRaises(dt.DecisionsError):
                 ap.auto_analyze(self.con,SID,self.root/'cm',self.root,topic_classifier='decisions',allow_api=True)
@@ -137,7 +137,7 @@ class HybridAnalysisTests(unittest.TestCase):
         before=self.tables()
         with patch.dict(os.environ,{'OPENAI_API_KEY':'fake-test-key'}), \
              patch.object(cg.shutil,'which',side_effect=lambda name:name), \
-             patch.object(cg.subprocess,'run',side_effect=self.fake_process), \
+             patch.object(ap,'_run',side_effect=self.fake_process), \
              patch.object(dt,'classify_map',side_effect=lambda source,*a,**kw:self.overlay(source)), \
              patch('topic_overlays.store_overlay',side_effect=RuntimeError('Synthetic save failure')):
             with self.assertRaises(RuntimeError):
@@ -168,7 +168,7 @@ class HybridAnalysisTests(unittest.TestCase):
 
     def test_assign_command_never_runs_codex(self):
         self.save_source();before=self.tables()
-        with patch.dict(os.environ,{'OPENAI_API_KEY':'fake-test-key'}),patch.object(cg.subprocess,'run',side_effect=AssertionError('No Codex')), \
+        with patch.dict(os.environ,{'OPENAI_API_KEY':'fake-test-key'}),patch.object(ap,'_run',side_effect=AssertionError('No Codex')), \
              patch.object(dt,'classify_map',side_effect=lambda source,*a,**kw:self.overlay(source)),redirect_stdout(io.StringIO()):
             result=cg.main(['--db',str(self.db),'assign-topics','--session',SID,'--allow-api'])
         self.assertEqual(result,0);self.assertEqual(self.tables(),before)
