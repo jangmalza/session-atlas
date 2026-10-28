@@ -20,6 +20,17 @@ def question(identifier, references, title="질문", classification="answered_qu
 
 
 class QuestionTimelineTests(unittest.TestCase):
+    def test_items_the_user_asked_as_questions_join_the_order_whatever_their_class(self):
+        asked = question("asked", [("m", 0)], classification="unknown")
+        asked["evidence"][0]["quote"] = "프레임 몇 정도 뽑을 수 있을까?"
+        decided = question("decided", [("m", 0)], classification="decision")
+        decided["evidence"][0]["quote"] = "프레임 몇 정도 뽑을 수 있을까?"
+        plain = question("plain", [("m", 0)], classification="unknown")
+        order = question_order({"messages": [message("m", 0)], "nodes": [asked, decided, plain]})
+        self.assertEqual([e["id"] for e in order["confirmed"]], ["asked"])
+        self.assertEqual(order["confirmed"][0]["classification"], "unknown")
+        self.assertEqual(order["unconfirmed"], [])
+
     def test_original_indices_order_sparse_embedded_messages_and_earliest_reference(self):
         data = {"messages": [message("late", 600), message("zero", 0), message("early", 10)],
                 "nodes": [question("late-question", [("late", 600)]),

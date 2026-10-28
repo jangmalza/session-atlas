@@ -61,6 +61,25 @@ class ContextGraphTests(unittest.TestCase):
         self.assertEqual(graph["sessionCount"],1)
         self.assertEqual(graph["nodes"][0]["provenance"][0]["session_id"],SID)
 
+    def test_items_the_user_asked_as_questions_are_flagged_on_the_graph(self):
+        cg.scan(self.db,self.home)
+        def item(ident,cls,quote,speaker=None):
+            evidence={"messageId":"m1","quote":quote,"verified":True,**({"speaker":speaker} if speaker else {})}
+            return {"id":ident,"kind":"item","title":ident,"classification":cls,"status":"none","summary":"","evidence":[evidence]}
+        obj={"messages":[{"id":"m1","index":0,"speaker":"user","text":"Use SQLite? 괜찮을까?"}],"nodes":[{"id":"root","kind":"root"},
+            item("unknown-asked","unknown","괜찮을까?"),item("inference-asked","inference","Use SQLite?","user"),
+            item("decision-asked","decision","괜찮을까?"),item("unknown-plain","unknown","Use SQLite"),
+            item("assistant-marked","unknown","괜찮을까?","assistant"),
+            {**item("unverified","unknown","괜찮을까?"),"evidence":[{"messageId":"m1","quote":"괜찮을까?","verified":False}]}],"relations":[]}
+        file=self.base/"map.json"
+        file.write_text(json.dumps(obj,ensure_ascii=False),encoding="utf-8")
+        cg.import_map(self.db,SID,file)
+        graph=cg.build_graph(self.db)
+        self.assertEqual({node["title"] for node in graph["nodes"] if node.get("askedByUser")},{"unknown-asked","inference-asked"})
+        self.assertTrue(all("askedByUser" not in node for node in graph["nodes"] if node["title"] in ("decision-asked","unknown-plain")),
+                        "the flag is absent, not false, on other items")
+        self.assertEqual(cg.build_graph(self.db,previous=graph)["nodes"],graph["nodes"],"the flag is stable across rebuilds")
+
     def test_reject_duplicate_node_id(self):
         cg.scan(self.db,self.home)
         file=self.base/"bad.json"

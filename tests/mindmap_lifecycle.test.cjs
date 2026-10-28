@@ -1348,3 +1348,33 @@ test('offline answer evidence offers existing question details without raw quota
   assert.equal(app.elements.get('detail-panel').hidden,false);
   assert.deepEqual(app.requests,[]);
 });
+
+function askedItemFixture() {
+  const data=fixture();
+  const add=(id,extra)=>data.graph.nodes.push({id,title:`${id} title`,summary:'',project:'test',classification:'unknown',status:'none',...extra,
+    provenance:[{session_id:data.sessionId,source_node:`source-${id}`,evidence:[]}]});
+  add('asked',{askedByUser:true});add('plain',{});
+  data.context.analysis.structure.find(node=>node.id==='topic-12').childIds.push('source-asked','source-plain');
+  data.context.analysis.structure.push({id:'source-asked',kind:'item',parentId:'topic-12',childIds:[]},{id:'source-plain',kind:'item',parentId:'topic-12',childIds:[]});
+  data.context.messages.push({id:'m-asked',index:50,role:'user',timestamp:'2026-10-23T00:02:00.000Z',hasUserContent:true},
+    {id:'raw-asked-answer',index:51,role:'assistant',timestamp:'2026-10-23T00:02:01.000Z'});
+  data.context.analysis.anchors['source-asked']=[{messageId:'m-asked',index:50,sourceMessageId:'asked-user'},{messageId:'raw-asked-answer',index:51,sourceMessageId:'asked-answer'}];
+  data.context.analysis.anchors['source-plain']=[{messageId:'m-asked',index:50,sourceMessageId:'asked-user'}];
+  data.context.analysis.assistantEvidence={'source-asked':[{messageId:'raw-asked-answer',index:51,sourceMessageId:'asked-answer',quotes:['Stored answer to the asked item'],evidenceCount:1}]};
+  return data;
+}
+
+test('an item the user asked as a question is a question branch with its answer quote, whatever its stored class',async()=>{
+  const data=askedItemFixture(),before=clone(data),app=browser({data,storage:new Map([[stateKey,JSON.stringify(data.selection)]])});await settle();
+  const questions=app.nodes('question');
+  assert.equal(questions.length,17,'the asked item joins the sixteen stored questions');
+  const asked=questions.find(card=>card.dataset.nodeId==='asked');
+  assert.ok(asked,'the asked item is a question branch');
+  assert.equal(questions.some(card=>card.dataset.nodeId==='plain'),false,'an item without the flag stays out');
+  assert.equal(asked.querySelector('.tree-no').textContent,'1.17','it is numbered by its user message position');
+  assert.match(asked.title,/사용자가 물음으로 적은 항목/);
+  asked.click();await settle();
+  const evidence=app.answers().find(card=>card.dataset.kind==='answer-evidence');
+  assert.ok(evidence,'its verified assistant quote is an answer leaf');assert.equal(evidence.dataset.messageId,'raw-asked-answer');
+  assert.deepEqual(data,before,'promotion must only change presentation');
+});

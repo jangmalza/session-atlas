@@ -1,7 +1,8 @@
 /* Derived display only. Pair stored answers; order by rechecked user anchors. */
 const QuestionAnswers = (() => {
   "use strict";
-  const isQuestion = node => ["open_question","answered_question"].includes(node.classification);
+  // An item the user asked as a question (flagged at build time from their own quote) is a question too.
+  const isQuestion = node => ["open_question","answered_question"].includes(node.classification) || node.askedByUser===true;
   const sessionTitle=session=>session?.displayTitle || session?.title || session?.project || "세션";
   function applySessionDisplay(session,result) {
     const name=result?.displayName;
@@ -106,9 +107,10 @@ const QuestionAnswers = (() => {
         }
         answers.sort((a,b) => (a.anchor?.index ?? Infinity)-(b.anchor?.index ?? Infinity));
         // These are saved, rechecked assistant quotations on an answered
-        // question, not inferred answers or new graph nodes/relationships.
+        // question or on an item the user asked as a question, not inferred
+        // answers or new graph nodes/relationships.
         const evidenceByMessage=new Map();
-        if(question.classification==="answered_question" && question.status==="answered") {
+        if((question.classification==="answered_question" && question.status==="answered") || question.askedByUser===true) {
           for(const evidence of context?.analysis.assistantEvidence?.[source.source_node] || []) {
             const message=messages.get(evidence.messageId);
             if(!message || message.role!=="assistant" || message.index!==evidence.index ||
@@ -977,7 +979,7 @@ if(typeof document !== "undefined") (() => {
   function questionNode(entry,number,branch,leaf=false) {
     const key=QuestionAnswers.occurrenceKey(entry),node=nodes.get(entry.nodeId),open=key===mindQuestion,name=nodeTitle(node,entry.source);
     const spec={kind:"question",key,number,label:name,expanded:open && !leaf,selected:open,children:[],count:leaf?0:entry.answers.length+entry.answerEvidence.length,
-      title:`${name}\n${entry.anchor?"원문 #"+(entry.anchor.index+1):"순서 미확정"} · 답변 연결 ${entry.answers.length}개${entry.answerEvidence.length?" · 답변 근거 "+entry.answerEvidence.length+"개":""}`,
+      title:`${name}\n${entry.anchor?"원문 #"+(entry.anchor.index+1):"순서 미확정"} · 답변 연결 ${entry.answers.length}개${entry.answerEvidence.length?" · 답변 근거 "+entry.answerEvidence.length+"개":""}${node.askedByUser?"\n사용자가 물음으로 적은 항목 · 분석 분류: "+label(node):""}`,
       data:{nodeId:entry.nodeId,sourceNode:entry.source.source_node},
       action:()=>{if(open){mindQuestion="";mindAnswer="";close();rememberMind();renderMind();}else selectMindQuestion(entry);}};
     if(!open && !leaf)spec.hits=countHits([...entry.answers.map(answer=>{const node=nodes.get(answer.nodeId);return nodeTitle(node,answer.source || resolveSource(node));}),...entry.answerEvidence.map(evidence=>evidenceTitle(entry,evidence))]);

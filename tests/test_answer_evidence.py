@@ -134,6 +134,25 @@ class AnswerEvidenceTests(unittest.TestCase):
         self.assertEqual(groups[0]["quotes"], ["First valid answer.", "Second valid fragment."])
         self.assertEqual(groups[0]["evidenceCount"], 2)
 
+    def test_items_the_user_asked_as_questions_get_answer_groups_whatever_their_class(self):
+        with self.con:
+            self.con.execute("UPDATE messages SET content=? WHERE id='raw-question'", ("A question requiring an answer?",))
+        self.analysis["messages"][0]["text"] = "A question requiring an answer?"
+        node = self.analysis["nodes"][0]
+        node["evidence"][0]["quote"] = "requiring an answer?"
+        for classification, expected in (("unknown", 1), ("inference", 1), ("suggestion", 1), ("decision", 0), ("completed_action", 0)):
+            with self.subTest(classification=classification):
+                node["classification"] = classification
+                node["status"] = "none"
+                self.save()
+                groups = TimelineReader(self.database).read(SID)["analysis"]["assistantEvidence"]
+                self.assertEqual([group["quotes"] for group in groups.get("question", [])], [["First valid answer."]] * expected)
+        node["classification"] = "unknown"
+        node["evidence"][0]["quote"] = "A question"
+        self.save()
+        self.assertEqual(TimelineReader(self.database).read(SID)["analysis"]["assistantEvidence"], {},
+                         "a user quote without a question mark promotes nothing")
+
     def test_source_aliases_resolving_to_one_original_message_keep_all_source_ids(self):
         self.analysis["messages"].append({**self.analysis["messages"][2], "id": "chunk2_m1"})
         self.analysis["nodes"][0]["evidence"].append(self.evidence("Second valid fragment.", messageId="chunk2_m1"))

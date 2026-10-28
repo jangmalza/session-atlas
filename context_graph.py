@@ -22,6 +22,7 @@ import tempfile
 import time
 import unicodedata
 from datetime import datetime, timezone
+from asked_questions import asked_by_user, speakers_of
 from ui_ko import CLASSIFICATION_KO, RELATION_KO, STATUS_KO
 
 SCHEMA = """
@@ -481,6 +482,7 @@ def build_graph(con: sqlite3.Connection, only_project: str | None = None, previo
         sessions.add(sid)
         projects.add(project)
         local_to_global = {}
+        speakers = speakers_of(obj)
         for n in obj["nodes"]:
             if n.get("kind") in ("root", "topic"):
                 continue
@@ -502,6 +504,9 @@ def build_graph(con: sqlite3.Connection, only_project: str | None = None, previo
                 "evidence": [{"quote": str(e.get("quote") or ""), "messageId": str(e.get("messageId") or ""),
                               "verified": bool(e.get("verified"))} for e in n.get("evidence", []) if isinstance(e, dict)][:12]
             })
+            # A user question the analysis filed under another class still shows as a question branch.
+            if asked_by_user(n, speakers):
+                target["askedByUser"] = True
         for e in obj.get("relations", []):
             frm = local_to_global.get(e.get("from"))
             to = local_to_global.get(e.get("to"))

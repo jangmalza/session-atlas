@@ -5,9 +5,8 @@ from collections import Counter
 from html import escape
 from urllib.parse import quote
 
+from asked_questions import QUESTION_CLASSES, asked_by_user
 from ui_ko import CLASSIFICATION_KO
-
-QUESTION_CLASSES = frozenset(("open_question", "answered_question"))
 
 
 def question_order(data: dict) -> dict[str, list[dict]]:
@@ -21,9 +20,11 @@ def question_order(data: dict) -> dict[str, list[dict]]:
     supplied = [m for m in data.get("messages", []) if isinstance(m, dict) and isinstance(m.get("id"), str)]
     counts = Counter(m["id"] for m in supplied)
     messages = {m["id"]: m for m in supplied if counts[m["id"]] == 1}
+    speakers = {identifier: message.get("speaker") for identifier, message in messages.items()}
     confirmed, unconfirmed = [], []
     for position, node in enumerate(data.get("nodes", [])):
-        if node.get("kind") != "item" or node.get("classification") not in QUESTION_CLASSES:
+        if node.get("kind") != "item" or (node.get("classification") not in QUESTION_CLASSES
+                                           and not asked_by_user(node, speakers)):
             continue
         entry = {"id": node["id"], "title": node.get("title") or "제목 없는 질문",
                  "classification": node["classification"], "map_position": position}

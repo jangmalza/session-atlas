@@ -56,6 +56,7 @@ The mind map, full-text search and original-message reader work without model ca
 | `backup_store.py` | Verified backup/restore |
 | `topic_display.py` / `topic_overlays.py` | Display-name settings and assignment overlays |
 | `session_metadata.py` | Read-only Codex lineage and verified fork boundaries for session titles |
+| `asked_questions.py` | Items the user asked as a question, found from their own verified quotes (question marks and Korean endings) |
 | `question_timeline.py` | Offline question ordering from verified user-message evidence |
 | `localize_map.py` | Korean localization of a built Conversation Map HTML |
 | `ui_ko.py` | Korean labels |

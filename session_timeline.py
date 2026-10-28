@@ -9,6 +9,7 @@ import re
 import sqlite3
 import threading
 
+from asked_questions import asked_by_user
 import context_graph as cg
 from topic_overlays import project_structure, read_overlays
 from topic_display import display_revision, map_fingerprint, project_topic_display, read_topic_display, read_session_names, session_display_state, item_label_metadata
@@ -212,11 +213,14 @@ def _anchors(rows: list[dict], analysis: dict, baseline: int | None) -> tuple[di
     for index, row in enumerate(rows):
         candidates.setdefault((row["role"], row["content"]), []).append(index)
     by_message, by_node, assistant_evidence = {}, {}, {}
+    speakers = {identifier: message.get("speaker") for identifier, message in sources.items() if identifier not in repeated}
     for node in analysis.get("nodes", []):
         if node.get("kind") != "item":
             continue
         found = []
         answer_groups = {}
+        # Answer groups also form for an item the user asked as a question, whatever its stored class.
+        asked = asked_by_user(node, speakers)
         for evidence in node.get("evidence", []):
             if not isinstance(evidence, dict) or evidence.get("verified") is not True:
                 continue
@@ -261,8 +265,8 @@ def _anchors(rows: list[dict], analysis: dict, baseline: int | None) -> tuple[di
             # Build display evidence at the same per-quote validation boundary.
             # A valid quote must never lend its anchor to another invalid quote
             # in the node, and neighboring messages are never inferred answers.
-            if (node.get("classification") == "answered_question" and node.get("status") == "answered"
-                    and rows[index]["role"] == "assistant"):
+            answered = node.get("classification") == "answered_question" and node.get("status") == "answered"
+            if (answered or asked) and rows[index]["role"] == "assistant":
                 group = answer_groups.setdefault(rows[index]["id"], {
                     **anchor, "sourceMessageIds": [], "quotes": [], "evidenceCount": 0})
                 if identifier not in group["sourceMessageIds"]:
