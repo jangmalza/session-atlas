@@ -283,6 +283,18 @@ class SessionTimelineTests(unittest.TestCase):
         self.assertNotEqual(live.status()['analysisRevision'], initial['analysisRevision'])
         self.assertEqual(live.timeline.read(SID)['analysis']['nodes'][0]['rationale'], modified['nodes'][0]['rationale'])
 
+    def test_catalogue_rows_carry_a_topic_summary_without_items_or_quotes(self):
+        analysis = {**self.analysis, 'nodes': [
+            {'id': 'root', 'kind': 'root', 'title': '예시', 'childIds': ['topic-a', 'topic-b']},
+            {'id': 'topic-a', 'kind': 'topic', 'title': '첫 주제 <원문>', 'parentId': 'root', 'childIds': ['question', 'answer', 'unplaced']},
+            {'id': 'topic-b', 'kind': 'topic', 'title': '둘째 주제', 'parentId': 'root', 'childIds': []},
+            *[{**node, 'parentId': 'topic-a'} for node in self.analysis['nodes']]]}
+        self.import_analysis(analysis)
+        rows = TimelineReader(self.db_file).read()['sessions']
+        self.assertEqual(rows[0]['topics'], [{'id': 'topic-a', 'title': '첫 주제 <원문>'}, {'id': 'topic-b', 'title': '둘째 주제'}])
+        self.assertNotIn('예시 질문', json.dumps(rows[0]['topics'], ensure_ascii=False))
+        self.assertEqual(rows[0]['analysisItemCount'], 3)
+
     def test_http_views_are_read_only_paged_and_do_not_publish_content_in_status(self):
         before = self.unchanged_tables()
         live = LiveDashboard(self.root/'live', self.db_file, 0)

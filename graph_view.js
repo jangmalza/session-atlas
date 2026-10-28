@@ -270,7 +270,7 @@ if(typeof document !== "undefined") (() => {
   const qaFailedSessions=new Set();
   let qaCatalog=Object.entries(savedContext).map(([id,context])=>({id,...context.session}));
   let catalogReady=!liveCatalog,catalogTimer=0,catalogRequest=null,catalogStopped=false,catalogSignature="",catalogEpoch=0;
-  let mindSession="",mindTopic=null,mindQuestion="",mindAnswer="",mindPage=0,mindTopicGroup="primary",mindRootKind="session";
+  let mindSession="",mindTopic=null,mindQuestion="",mindAnswer="",mindPage=0,mindTopicGroup="primary",mindRootKind="project",mindProject="",mindHelpers="";
   let topicDisplaySaving=false,topicDisplayResult=null;
   const topicNameDrafts=new Map();
   const sessionNameDrafts=new Map();
@@ -288,7 +288,7 @@ if(typeof document !== "undefined") (() => {
   // The line layer is kept by reference: clearing the tree must not drop it from the document.
   const mindLinks=byId("mind-links");
   // Camera for the tree box: translate(x,y) scale(k). Fitted when a session opens, then moved by the reader.
-  let mindCamera={x:0,y:0,k:1},mindCameraRoot="",mindTerm="",mindSearchHits=0;
+  let mindCamera={x:0,y:0,k:1},mindCameraRoot="",mindTerm="",mindSearchHits=0,mindOpenBranch=null;
   const treeHostEl=byId("mind-tree-host"),treeEl=byId("mind-tree");
   let sourcePanelWasOpen=false;
   // Sessions without analysis branch into request groups keyed "raw:<group>"; they are never saved topics.
@@ -296,9 +296,9 @@ if(typeof document !== "undefined") (() => {
   const mindMotionQuery=window.matchMedia("(prefers-reduced-motion: reduce)");
   const mindMotionControl=byId("mind-reduce-motion");
   try {mindMotionControl.checked=sessionStorage.getItem("context-graph-reduced-motion")==="true";} catch (_) {}
-  try {const state=JSON.parse(sessionStorage.getItem("context-graph-mind-selection") || "{}");mindSession=state.session || "";if(state.topicGroup==="auxiliary")mindTopicGroup="auxiliary";mindTopic=state.topic ?? null;mindQuestion=state.question || "";mindAnswer=typeof state.answer==="string"?state.answer:"";mindRootKind=state.rootKind==="project"?"project":"session";if(Number.isInteger(state.page) && state.page>=0)mindPage=state.page;else if(Array.isArray(state.pages) && Number.isInteger(state.pages[0]) && state.pages[0]>=0)mindPage=state.pages[0];if(state.filters && typeof state.filters.query==="string" && typeof state.filters.project==="string")restoredMindFilters=state.filters;} catch (_) {}
-  // A restored project root shows its tree straight away; otherwise the list stays up until a session is chosen.
-  let mindSessionListOpen=!mindSession && !(mindRootKind==="project" && restoredMindFilters?.project);
+  try {const storedState=sessionStorage.getItem("context-graph-mind-selection"),state=JSON.parse(storedState || "{}");mindSession=state.session || "";if(state.topicGroup==="auxiliary")mindTopicGroup="auxiliary";mindTopic=state.topic ?? null;mindQuestion=state.question || "";mindAnswer=typeof state.answer==="string"?state.answer:"";mindRootKind=state.rootKind==="project"?"project":storedState?"session":"project";mindProject=typeof state.openProject==="string"?state.openProject:"";mindHelpers=typeof state.helpers==="string"?state.helpers:"";if(Number.isInteger(state.page) && state.page>=0)mindPage=state.page;else if(Array.isArray(state.pages) && Number.isInteger(state.pages[0]) && state.pages[0]>=0)mindPage=state.pages[0];if(state.filters && typeof state.filters.query==="string" && typeof state.filters.project==="string")restoredMindFilters=state.filters;} catch (_) {}
+  // A fresh page lands on the all-projects tree; a saved session root without a session keeps the list up.
+  let mindSessionListOpen=mindRootKind==="session" && !mindSession;
   try {const state=JSON.parse(sessionStorage.getItem("context-graph-mind-selection") || "{}");if(typeof state.sessionListOpen==="boolean")mindSessionListOpen=state.sessionListOpen;} catch (_) {}
   const qaTime = new Intl.DateTimeFormat("ko-KR",{dateStyle:"short",timeStyle:"short"});
   const label = node => ko.classification[node.classification] || node.classification;
@@ -626,7 +626,8 @@ if(typeof document !== "undefined") (() => {
       contexts[session] = context;
     }
     // Bound concurrent local reads even when many sessions have been analysed.
-    const pending=sessions.slice();
+    // The open session's analysis is read first so its branches fill in before the rest arrive.
+    const pending=sessions.slice().sort((a,b)=>(b===mindSession)-(a===mindSession));
     await Promise.all(Array.from({length:Math.min(2,pending.length)},async()=>{
       while(pending.length) {
         const session=pending.shift();
@@ -650,7 +651,7 @@ if(typeof document !== "undefined") (() => {
   }
   function rememberMind() {
     rememberScope();
-    try {sessionStorage.setItem("context-graph-mind-selection",JSON.stringify({session:mindSession,topic:mindTopic,question:mindQuestion,...(mindAnswer?{answer:mindAnswer}:{}),page:mindPage,...(mindSessionListOpen || !mindSession?{sessionListOpen:mindSessionListOpen}:{}),...(mindTopicGroup==="auxiliary"?{topicGroup:"auxiliary"}:{}),...(mindRootKind==="project"?{rootKind:"project"}:{}),filters:{query:byId("query").value,project:byId("project").value}}));} catch (_) {}
+    try {sessionStorage.setItem("context-graph-mind-selection",JSON.stringify({session:mindSession,topic:mindTopic,question:mindQuestion,...(mindAnswer?{answer:mindAnswer}:{}),page:mindPage,...(mindSessionListOpen || !mindSession?{sessionListOpen:mindSessionListOpen}:{}),...(mindTopicGroup==="auxiliary"?{topicGroup:"auxiliary"}:{}),...(mindRootKind==="project"?{rootKind:"project",...(mindProject?{openProject:mindProject}:{})}:{}),...(mindHelpers?{helpers:mindHelpers}:{}),filters:{query:byId("query").value,project:byId("project").value}}));} catch (_) {}
   }
   function mindSessionCard(session,active,action) {
     const title=sessionTitle(session);
@@ -845,40 +846,109 @@ if(typeof document !== "undefined") (() => {
       children:topicBranches(group,topics,branch),action:leaveSessionRoot};
   }
   // Project root: sessions are numbered branches in recent order; the open one shows its topics or request groups.
+  const projectKey=project=>project || "unknown-project";
+  // "모든 프로젝트" root: projects are numbered branches in recent order; a project opens to its sessions, a session to topic leaves.
+  function allProjectsTree(rows,open) {
+    const groups=new Map();
+    for(const row of rows){const key=projectKey(row.project);if(!groups.has(key))groups.set(key,{project:row.project || "",rows:[]});groups.get(key).rows.push(row);}
+    const root={kind:"all",key:"all",label:"모든 프로젝트",title:`모든 프로젝트 · 프로젝트 ${groups.size}개 · 세션 ${rows.length}개 · 누르면 세션 목록을 엽니다`,expanded:true,selected:true,children:[],action:()=>showSessionView(true)};
+    if(!groups.size)root.children.push(note(catalogReady?"세션이 없습니다.":"세션을 불러오고 있습니다…"));
+    [...groups.entries()].forEach(([key,entry],index)=>root.children.push(projectBranch(key,entry.project,entry.rows,String(index+1),open)));
+    return root;
+  }
+  function projectBranch(key,project,list,number,open) {
+    const isOpen=mindProject===key,label=project || "프로젝트 미확정",stamp=activityValue(list[0]);
+    const spec={kind:"project",key,number,label,title:`${label}\n세션 ${list.length}개 · 최근 ${Number.isFinite(stamp)?qaTime.format(new Date(stamp)):"활동 시각 미확정"}${project?"\n두 번 누르면 이 프로젝트만 봅니다":""}`,
+      expanded:isOpen,selected:isOpen,count:list.length,children:[],
+      action:()=>{mindProject=isOpen?"":key;mindSession="";mindTopic=null;mindQuestion="";mindAnswer="";mindHelpers="";mindTopicGroup="primary";close();rememberMind();renderMind(isOpen?null:key);}};
+    if(project)spec.enter=()=>rootAtProject(project);
+    if(isOpen)spec.children=list.map((row,index)=>sessionBranch(row,`${number}.${index+1}`,row.id===mindSession?open:null,{leafTopics:true}));
+    else spec.hits=countHits(list.flatMap(row=>[sessionTitle(row),...sessionTopicTitles(row)]));
+    return spec;
+  }
   function projectTree(project,rows,open) {
-    const root={kind:"project",key:project,label:project,title:`${project}\n프로젝트 · 세션 ${rows.length}개 · 누르면 세션 목록을 엽니다`,expanded:true,selected:true,children:[],action:()=>showSessionView(true)};
+    const root={kind:"project",key:project,label:project,title:`${project}\n프로젝트 · 세션 ${rows.length}개 · 누르면 전체 트리로 올라갑니다`,expanded:true,selected:true,children:[],action:leaveProjectRoot};
     if(!rows.length)root.children.push(note(catalogReady?"이 프로젝트에 세션이 없습니다.":"세션을 불러오고 있습니다…"));
     rows.forEach((row,index)=>root.children.push(sessionBranch(row,String(index+1),row.id===mindSession?open:null)));
     return root;
   }
-  function sessionBranch(row,number,open) {
+  // Topic titles for a folded session: the loaded analysis when present, otherwise the catalogue's summary.
+  function sessionTopicTitles(row) {
+    if(row.hasAnalysis===false)return [];
+    const group=qaGroups.find(entry=>entry.sessionId===row.id);
+    if(group?.topics.length)return group.topics.map(topic=>topic.title);
+    return Array.isArray(row.topics)?row.topics.map(topic=>String(topic?.title || "")):[];
+  }
+  const helpersOf=row=>sessionKind(row)==="primary"?catalogRows().filter(item=>sessionKind(item)==="subagent" && parentKey(item)===row.id).sort(recentSessions):[];
+  function sessionBranch(row,number,open,{leafTopics=false,leaf=false}={}) {
     const title=sessionTitle(row),stamp=activityValue(row),analysed=row.hasAnalysis!==false;
     const activity=Number.isFinite(stamp)?qaTime.format(new Date(stamp)):"활동 시각 미확정";
-    const topicTitles=analysed?(qaGroups.find(entry=>entry.sessionId===row.id)?.topics.map(topic=>topic.title) || []):[];
-    const preview=row.requestPreviews?.first?.text;
-    const spec={kind:"session",key:row.id,number,label:title,expanded:Boolean(open),selected:Boolean(open),children:[],
-      title:`${title}\n${row.provider==='claude'?'Claude Code':'Codex'} · ${activity} · ${analysed?(topicTitles.length?"주제 "+topicTitles.length+"개":"분석 있음"):"분석 대기"}${row.messageCount!==undefined?" · 메시지 "+row.messageCount+"개":""}${preview?"\n"+preview:""}\n두 번 누르면 이 세션만 봅니다`,
+    const topicTitles=sessionTopicTitles(row),preview=row.requestPreviews?.first?.text;
+    const helpers=leaf?[]:helpersOf(row),helpersOpen=!leafTopics && helpers.length>0 && mindHelpers===row.id,selfOpen=Boolean(open) && !leaf;
+    const spec={kind:"session",key:row.id,number,label:title,expanded:selfOpen || helpersOpen,selected:Boolean(open),children:[],
+      title:`${title}\n${row.provider==='claude'?'Claude Code':'Codex'} · ${activity} · ${analysed?(topicTitles.length?"주제 "+topicTitles.length+"개":"분석 있음"):"분석 대기"}${row.messageCount!==undefined?" · 메시지 "+row.messageCount+"개":""}${helpers.length?" · 보조 작업 "+helpers.length+"개":""}${preview?"\n"+preview:""}\n두 번 누르면 이 세션만 봅니다`,
       count:topicTitles.length,badge:analysed?null:"대기",data:{analysis:analysed?"ready":"pending"},
       action:()=>selectSessionBranch(row),enter:()=>rootAtSession(row.id)};
-    if(!open)spec.hits=countHits(analysed?topicTitles:[preview,row.requestPreviews?.latest?.text]);
-    else spec.children=open.raw?rawBranches(open.session,open.raw):topicBranches(open.group,open.topics,open.branch,true);
+    if(!spec.expanded)spec.hits=countHits([...(analysed?topicTitles:[preview,row.requestPreviews?.latest?.text]),...helpers.map(sessionTitle)]);
+    if(selfOpen) {
+      if(leafTopics)spec.children=open.raw?[note(open.raw.offline?"원문은 실행 중인 뷰어에서 읽을 수 있습니다.":"분석 대기 · 이 세션만 보기로 요청을 펼칩니다.","raw-leaf")]:topicLeaves(row,open.group,open.topics);
+      else spec.children=open.raw?rawBranches(open.session,open.raw):topicBranches(open.group,open.topics,open.branch,true);
+    }
+    // Helper sessions hang under the conversation that started them; three levels down they fold into one leaf.
+    if(helpers.length) {
+      const key="helpers:"+row.id;
+      const groupSpec={kind:"helper-group",key,label:"보조 작업",title:`보조 작업 ${helpers.length}개 · 이 세션에서 파생된 에이전트 작업${leafTopics?"\n이 프로젝트만 보기에서 펼칩니다":""}`,
+        count:helpers.length,expanded:helpersOpen,selected:helpersOpen,children:[],
+        action:leafTopics?(row.project?()=>{mindHelpers=row.id;rootAtProject(row.project);}:null)
+          :()=>{mindHelpers=helpersOpen?"":row.id;if(helpersOpen && helpers.some(helper=>helper.id===mindSession)){mindSession="";mindTopic=null;mindQuestion="";mindAnswer="";}close();rememberMind();renderMind(helpersOpen?null:key);}};
+      if(!helpersOpen)groupSpec.hits=countHits(helpers.flatMap(helper=>[sessionTitle(helper),...sessionTopicTitles(helper)]));
+      else groupSpec.children=helpers.map((helper,index)=>sessionBranch(helper,`${number}.${index+1}`,helper.id===mindSession?mindOpenBranch:null,{leaf:true}));
+      spec.children.push(groupSpec);
+    }
     return spec;
+  }
+  // Under the all-projects root topics are leaves; before the analysis context arrives the catalogue summary names them.
+  function topicLeaves(row,group,topics) {
+    const entries=group?.topics.length?topics.map(topic=>({key:topic.value,title:topic.title,auxiliary:topic.displayGroup==="auxiliary",order:topicOrderLabel(topic)})):
+      (Array.isArray(row.topics)?row.topics:[]).map(topic=>({key:"topic:"+topic.id,title:String(topic.title || "제목 없는 주제"),auxiliary:topic.group==="auxiliary",order:"저장된 순서"}));
+    if(!entries.length)return [note(group?"저장된 질문이 없습니다.":qaLoading?"저장된 분석을 확인하는 중…":"저장된 주제가 없습니다.","t-empty")];
+    const leaf=entry=>({kind:"topic",key:entry.key,number:entry.auxiliary?"보조":"",label:entry.title,title:`${entry.title}\n${entry.auxiliary?"보조 정보":entry.order}\n이 세션만 보기로 질문을 펼칩니다`,
+      selected:mindTopic===entry.key && (mindTopicGroup==="auxiliary")===entry.auxiliary,data:{group:entry.auxiliary?"auxiliary":"primary"},
+      action:()=>{const same=mindTopic===entry.key;mindTopic=same?null:entry.key;mindTopicGroup=entry.auxiliary?"auxiliary":"primary";mindQuestion="";mindAnswer="";close();rememberMind();renderMind();}});
+    return [...entries.filter(entry=>!entry.auxiliary).map(leaf),...entries.filter(entry=>entry.auxiliary).map(leaf)];
   }
   function selectSessionBranch(row) {
     const open=row.id===mindSession;
     mindSession=open?"":row.id;mindTopic=null;mindQuestion="";mindAnswer="";mindTopicGroup="primary";
+    if(sessionKind(row)!=="subagent")mindHelpers="";
     close();rememberMind();renderMind(open?null:row.id);
   }
   function rootAtSession(id) {
     mindSession=id;mindRootKind="session";mindSessionListOpen=false;close();rememberMind();render();
   }
-  // Up from a session root is its project's tree; a session without a project goes back to the list.
+  function rootAtProject(project) {
+    if(!project || ![...byId("project").options].some(option=>option.value===project))return;
+    byId("project").value=project;restoredMindFilters=null;mindRootKind="project";mindProject="";mindSessionListOpen=false;mindPage=0;close();rememberMind();render();
+    byId("mind-canvas").scrollIntoView({block:"start",behavior:reducedMotion()?"auto":"smooth"});
+  }
+  // Climbing: a session root goes to its project's tree, a project root to the all-projects tree, with the same branch open.
+  function leaveToAll() {
+    const session=catalogRows().find(row=>row.id===mindSession);
+    mindProject=session?projectKey(session.project):mindProject;
+    if(session && sessionKind(session)==="subagent")mindHelpers=parentKey(session);
+    byId("project").value="";restoredMindFilters=null;mindRootKind="project";mindSessionListOpen=false;mindPage=0;close();rememberMind();render();
+    byId("mind-canvas").scrollIntoView({block:"start",behavior:reducedMotion()?"auto":"smooth"});
+  }
+  function leaveProjectRoot() {
+    mindProject=projectKey(byId("project").value);leaveToAll();
+  }
   function leaveSessionRoot() {
     const session=catalogRows().find(row=>row.id===mindSession);
+    if(session && sessionKind(session)==="subagent")mindHelpers=parentKey(session);
     if(session?.project && [...byId("project").options].some(option=>option.value===session.project)) {
-      byId("project").value=session.project;restoredMindFilters=null;mindRootKind="project";mindPage=0;close();rememberMind();render();
+      byId("project").value=session.project;restoredMindFilters=null;mindRootKind="project";mindProject="";mindPage=0;close();rememberMind();render();
       byId("mind-canvas").scrollIntoView({block:"start",behavior:reducedMotion()?"auto":"smooth"});
-    } else showSessionView(true);
+    } else leaveToAll();
   }
   function topicNode(group,topic,number,auxiliary,branch,leafQuestions=false) {
     const open=topic.value===mindTopic && (mindTopicGroup==="auxiliary")===auxiliary;
@@ -976,20 +1046,24 @@ if(typeof document !== "undefined") (() => {
     // The search box narrows the session list; an open session stays put and has its matching branches lit instead.
     const rows=scopedCatalog().slice().sort(recentSessions).filter(session=>!project || session.project===project);
     const catalog=rows.filter(session=>!term || sessionSearchText(session).includes(term));
-    if(catalogReady && mindSession && !rows.some(session=>session.id===mindSession)) {mindSession="";mindTopic=null;mindQuestion="";mindAnswer="";catalogOnly=false;}
-    const session=rows.find(session=>session.id===mindSession),group=qaGroups.find(group=>group.sessionId===mindSession);
+    // Helper sessions hang under their parent branch, so a selected helper stays visible while its parent is listed.
+    const visible=catalogKind==="primary"?[...rows,...catalogRows().filter(item=>sessionKind(item)==="subagent" && rows.some(row=>row.id===parentKey(item)))]:rows;
+    if(catalogReady && mindSession && !visible.some(session=>session.id===mindSession)) {mindSession="";mindTopic=null;mindQuestion="";mindAnswer="";mindHelpers="";catalogOnly=false;rememberMind();}
+    const session=visible.find(session=>session.id===mindSession),group=qaGroups.find(group=>group.sessionId===mindSession);
     mindTerm=term;
-    // A chosen project is the root and its sessions are branches; otherwise the tree needs a session, so the list stays up.
-    const projectRoot=mindRootKind==="project" && project ? project : "";
+    // The project filter is the root choice: a project roots the tree at itself, "모든 프로젝트" at the whole catalogue;
+    // only a session root needs a session, so the list stays up without one.
+    const projectRoot=mindRootKind==="project" && project ? project : "",allRoot=mindRootKind==="project" && !project;
+    if(catalogReady && allRoot && mindProject && !rows.some(row=>projectKey(row.project)===mindProject))mindProject="";
     explorer.updateSession(session?.id || "");
     byId('explorer-analyze').disabled=!session || !liveCatalog || window.parent===window;
-    const listOpen=mindSessionListOpen || (!session && !projectRoot);
+    const listOpen=mindSessionListOpen || (!session && !projectRoot && !allRoot);
     byId("session-mindmap").setAttribute("aria-label",listOpen?"세션 목록":"세션 마인드맵");
     byId("mind-canvas").classList.toggle("session-picker-open",listOpen);
     byId("mind-session-picker").hidden=!listOpen;
     byId("mind-tree-host").hidden=listOpen;byId("mind-zoom").hidden=listOpen;
     byId("mind-session-list-info").textContent=`${catalog.length}개 · 최근 대화순 · 원문 미리보기`;
-    byId("mind-session-change").hidden=!session && !projectRoot;
+    byId("mind-session-change").hidden=!session && !projectRoot && !allRoot;
     byId("mind-session-change").textContent=listOpen?"마인드맵으로 돌아가기":"세션 목록 펼치기";
     renderSessionEditor("mind",session);
     const allTopics=group?QuestionAnswers.orderedTopics(group):[];
@@ -1004,15 +1078,16 @@ if(typeof document !== "undefined") (() => {
     byId("mind-canvas").classList.toggle("raw-chronology",Boolean(raw));
     // New raw sessions do not change the saved analysis: a catalogue-only refresh keeps the
     // branch DOM and its motion and focus intact, updating only the root's label.
-    const treeKey=projectRoot?"project:"+projectRoot:session?"session:"+session.id:"";
-    // A project tree is rebuilt on every catalogue change so new sessions appear as branches.
-    const treeHost=byId("mind-tree"),sameTree=Boolean(treeKey) && !projectRoot && !listOpen && catalogOnly && treeHost.dataset.tree===treeKey;
+    const treeKey=allRoot?"all":projectRoot?"project:"+projectRoot:session?"session:"+session.id:"";
+    // Project and all-projects trees are rebuilt on every catalogue change so new sessions appear as branches.
+    const treeHost=byId("mind-tree"),sameTree=Boolean(treeKey) && !projectRoot && !allRoot && !listOpen && catalogOnly && treeHost.dataset.tree===treeKey;
     treeHost.classList.toggle("searching",Boolean(term) && Boolean(treeKey) && !listOpen);
     if(!treeKey || listOpen) {treeHost.replaceChildren(mindLinks);treeHost.dataset.tree="";mindPlan=null;mindAnswerSelection=null;}
     else if(sameTree) {const name=[...treeHost.querySelectorAll(".mind-node")].find(node=>node.dataset.kind==="session")?.querySelector(".name");if(name)name.textContent=sessionTitle(session);}
     else {
       mindAnswerSelection=null;mindSearchHits=0;
-      renderTree(projectRoot?projectTree(projectRoot,rows,{session,group,topics:allTopics,branch,raw}):raw?rawTree(session,raw):analysedTree(session,group,allTopics,branch));
+      const open={session,group,topics:allTopics,branch,raw};mindOpenBranch=open;
+      renderTree(allRoot?allProjectsTree(rows,open):projectRoot?projectTree(projectRoot,rows,open):raw?rawTree(session,raw):analysedTree(session,group,allTopics,branch));
       treeHost.dataset.tree=treeKey;
       // A new root is fitted; afterwards the camera only moves enough to show what opened.
       const fresh=mindCameraRoot!==treeKey;
@@ -1036,19 +1111,24 @@ if(typeof document !== "undefined") (() => {
     byId("mind-question-title-action").hidden=listOpen || auxiliaryMode || !branch.question;
     byId("mind-answer-title-action").hidden=listOpen || !mindAnswerSelection;
     const trail=byId("mind-selection");trail.replaceChildren();
-    if(projectRoot) {
+    // Crumbs above the root are buttons that climb; the root and the open path below it are plain.
+    if(allRoot) {
+      trail.append(el("span","전체","breadcrumb-label"),el("strong","모든 프로젝트"));
+      if(mindProject){const label=rows.find(row=>projectKey(row.project)===mindProject)?.project || "프로젝트 미확정",name=el("strong",label);name.title=label;trail.append(el("span","/","breadcrumb-arrow"),el("span","프로젝트","breadcrumb-label"),name);}
+      if(!session && !mindProject)trail.append(el("span","프로젝트 가지를 누르면 세션이, 세션 가지를 누르면 주제가 펼쳐집니다.","hint"));
+    } else if(projectRoot) {
+      const all=button("모든 프로젝트",leaveProjectRoot,"breadcrumb-up");all.title="전체 트리로 올라갑니다";
       const name=el("strong",projectRoot);name.title=projectRoot;
-      trail.append(el("span","프로젝트","breadcrumb-label"),name);
+      trail.append(el("span","전체","breadcrumb-label"),all,el("span","/","breadcrumb-arrow"),el("span","프로젝트","breadcrumb-label"),name);
       if(!session)trail.append(el("span","세션 가지를 누르면 주제가 펼쳐지고, 두 번 누르면 그 세션만 봅니다.","hint"));
-    } else if(session?.project) {
-      // The project sits above a session root; its crumb climbs back to the project tree.
-      const up=button(session.project,leaveSessionRoot,"breadcrumb-up");up.title="프로젝트 트리로 올라갑니다";
-      trail.append(el("span","프로젝트","breadcrumb-label"),up);
+    } else if(session) {
+      const all=button("모든 프로젝트",leaveToAll,"breadcrumb-up");all.title="전체 트리로 올라갑니다";
+      trail.append(el("span","전체","breadcrumb-label"),all);
+      if(session.project){const up=button(session.project,leaveSessionRoot,"breadcrumb-up");up.title="프로젝트 트리로 올라갑니다";trail.append(el("span","/","breadcrumb-arrow"),el("span","프로젝트","breadcrumb-label"),up);}
     }
     if(session) {
       const name=el("strong",sessionTitle(session));name.title=sessionTitle(session);
-      if(projectRoot || session.project)trail.append(el("span","/","breadcrumb-arrow"));
-      trail.append(el("span","세션","breadcrumb-label"),name);
+      trail.append(el("span","/","breadcrumb-arrow"),el("span","세션","breadcrumb-label"),name);
       if(raw?.chosen) {
         const text=raw.chosen.request.preview || "사용자 요청",request=el("strong",text);request.title=text;
         trail.append(el("span","/","breadcrumb-arrow"),el("span","요청","breadcrumb-label"),request);
@@ -1059,12 +1139,13 @@ if(typeof document !== "undefined") (() => {
       if(branch.question){const name=el("strong",nodeTitle(nodes.get(branch.question.nodeId),branch.question.source));name.title=name.textContent;trail.append(el("span","/","breadcrumb-arrow"),el("span","질문","breadcrumb-label"),name);}
       const notice=assignmentNotice(session);if(notice)trail.append(el("span",notice,"mind-selection-note"));
       if(term && !listOpen)trail.append(el("span",`검색 "${byId("query").value.trim()}" · 맞는 가지 ${mindSearchHits}개`,"mind-selection-note mind-search-note"));
-    } else if(!projectRoot) trail.append(el("span","먼저 세션을 선택하세요. 최근 대화순으로 표시합니다.","hint"));
+    } else if(!projectRoot && !allRoot) trail.append(el("span","먼저 세션을 선택하세요. 최근 대화순으로 표시합니다.","hint"));
     if(!catalogOnly) {
     const actions=byId("mind-actions");actions.replaceChildren();
-    if(projectRoot && session && !listOpen)actions.append(button("이 세션만 보기",()=>rootAtSession(session.id),"root-session"));
+    if(!listOpen && (projectRoot || allRoot) && session)actions.append(button("이 세션만 보기",()=>rootAtSession(session.id),"root-session"));
+    if(!listOpen && allRoot && mindProject && mindProject!=="unknown-project")actions.append(button("이 프로젝트만 보기",()=>rootAtProject(rows.find(row=>projectKey(row.project)===mindProject)?.project || ""),"root-project"));
     if(listOpen) {}
-    else if(projectRoot && !session) {}
+    else if((projectRoot || allRoot) && !session) {}
     else if(raw) {
       const whole=button("이 세션의 원문 읽기",()=>openSession(session.id));whole.disabled=!liveCatalog;actions.append(whole);
       if(raw.chosen){const source=button("이 요청의 앞뒤 원문 읽기",()=>explorer.openReader(session.id,raw.chosen.request.messageId),"source-open");source.disabled=!liveCatalog;actions.append(source);}
@@ -1224,9 +1305,9 @@ if(typeof document !== "undefined") (() => {
   byId("totals").textContent=`${data.nodes.length}개 항목 · ${data.edges.length}개 관계 · 분석된 세션 ${data.sessionCount}개`;
   // The project filter doubles as the root choice: a project roots the tree, "모든 프로젝트" returns to the session root.
   for(const [id,event] of [["query","input"],["project","change"]])byId(id).addEventListener(event,()=>{
-    if(id==="project"){mindRootKind=byId("project").value?"project":"session";if(mindRootKind==="project")mindSessionListOpen=false;}
+    if(id==="project"){mindRootKind="project";mindSessionListOpen=false;const current=catalogRows().find(row=>row.id===mindSession);mindProject=!byId("project").value && current?projectKey(current.project):"";}
     restoredMindFilters=null;mindPage=0;render();rememberMind();});
-  byId("reset").addEventListener("click",()=>{for(const id of ["query","project"])byId(id).value="";mindRootKind="session";restoredMindFilters=null;mindPage=0;render();rememberMind();});
+  byId("reset").addEventListener("click",()=>{for(const id of ["query","project"])byId(id).value="";mindRootKind="project";mindProject="";restoredMindFilters=null;mindPage=0;render();rememberMind();});
   for(const id of ["catalog-kind","catalog-parent"]) byId(id).addEventListener("change",()=>{
     if(id==="catalog-kind") catalogKind=byId(id).value;
     else catalogParent=byId(id).value;
@@ -1278,7 +1359,7 @@ if(typeof document !== "undefined") (() => {
     byId(prefix+"-topic-name-details").addEventListener("toggle",()=>scheduleMindDraw());
   }
   function showSessionView(list) {
-    if(list===mindSessionListOpen || (!list && !mindSession && !(mindRootKind==="project" && byId("project").value)))return;
+    if(list===mindSessionListOpen || (!list && !mindSession && mindRootKind!=="project"))return;
     mindSessionListOpen=list;
     history.replaceState(null,"",location.pathname+location.search);close();rememberMind();render();
     byId("mind-canvas").scrollIntoView({block:"start",behavior:reducedMotion()?"auto":"smooth"});

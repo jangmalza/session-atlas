@@ -156,6 +156,19 @@ def _offline_header(header: dict) -> dict:
     return result
 
 
+def _topic_summary(structure: list[dict]) -> list[dict]:
+    """Topic identities and display titles in stored order: no items, quotes or relations."""
+    summary = []
+    for node in structure:
+        if node.get("kind") != "topic":
+            continue
+        entry = {"id": node["id"], "title": node.get("displayTitle") or node.get("title") or ""}
+        if node.get("displayGroup") == "auxiliary":
+            entry["group"] = "auxiliary"
+        summary.append(entry)
+    return summary
+
+
 def _structure(analysis: dict) -> list[dict]:
     """Copy only stored topic hierarchy and item membership, without interpreting it."""
     return project_structure(analysis)[0]
@@ -400,6 +413,7 @@ class TimelineReader:
                       "firstMessageAt": rows[0]["at"] if rows else None,
                       "messageCount": len(rows), "lastMessageAt": rows[-1]["at"] if rows else session["first_seen"],
                       "hasAnalysis": bool(saved), "analysisItemCount": len(items),
+                      "topics": _topic_summary(structure) if saved else [],
                       "topicAssignment": assignment,
                       "topicDisplay": topic_display,
                       "importedAt": saved.get("imported_at", ""), "revision": revision,
