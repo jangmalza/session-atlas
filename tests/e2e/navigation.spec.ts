@@ -37,9 +37,10 @@ test('tree branches, verified source panel and next question preserve original c
   await page.keyboard.press('ArrowLeft');
   await expect(frame.locator('#mind-tree [data-kind="topic"]').first()).toBeFocused();
   await frame.locator('#mind-fit').click();
-  const host=(await frame.locator('#mind-tree-host').boundingBox())!,rootBox=(await frame.locator('#mind-tree [data-kind="session"]').boundingBox())!;
-  expect(rootBox.x).toBeGreaterThanOrEqual(host.x);expect(rootBox.y).toBeGreaterThanOrEqual(host.y);
-  expect(rootBox.x+rootBox.width).toBeLessThanOrEqual(host.x+host.width);
+  // The camera glides for a quarter second; the root must end inside the box.
+  const host=(await frame.locator('#mind-tree-host').boundingBox())!;
+  await expect.poll(async()=>{const rootBox=(await frame.locator('#mind-tree [data-kind="session"]').boundingBox())!;
+    return rootBox.x>=host.x && rootBox.y>=host.y && rootBox.x+rootBox.width<=host.x+host.width;}).toBe(true);
   await frame.locator('#source-reader-close').click();
   await frame.locator('#mind-tree [data-kind="session"][data-depth="0"]').click();
   await expect(frame.locator('#mind-tree [data-kind="project"][data-depth="0"]')).toHaveCount(1);

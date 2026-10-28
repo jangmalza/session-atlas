@@ -694,9 +694,9 @@ if(typeof document !== "undefined") (() => {
     treeEl.classList.toggle("mind-instant",!animate);
     treeEl.style.transform=`translate(${Math.round(mindCamera.x)}px,${Math.round(mindCamera.y)}px) scale(${mindCamera.k})`;
   }
-  function fitTree(options={}) {
+  function fitTree(options={},animate=true) {
     if(!mindPlan)return;const rootEntry=mindPlan.nodes[0];
-    mindCamera=MindTree.fit(viewSize(),treeSize(),{min:.55,focusY:rootEntry.y+rootEntry.height/2,...options});applyCamera();
+    mindCamera=MindTree.fit(viewSize(),treeSize(),{min:.55,focusY:rootEntry.y+rootEntry.height/2,...options});applyCamera(animate);
   }
   function revealEntries(entries,animate=true) {
     if(!mindPlan || !entries.length)return;
@@ -1199,7 +1199,10 @@ if(typeof document !== "undefined") (() => {
       const analyze=button("이 세션 분석",()=>byId('explorer-analyze').click());analyze.disabled=byId('explorer-analyze').disabled;
       notice.append(analyze,button("원문 읽기",()=>explorer.readSession(session.id)));
     }
-    byId("view-info").textContent=qaLoading?"저장된 분석과 원문 근거를 확인하고 있습니다…":(qaFailed?"일부 세션의 분석·원문 순서를 불러오지 못했습니다. 새로고침해 다시 확인해 주세요. ":"")+"주제를 누르면 질문이, 질문을 누르면 답변이 펼쳐집니다. 실선은 소속과 저장된 답변 관계, 점선은 질문에 저장된 답변 근거이며, 원문 순서가 없는 질문은 순서 미확정으로 표시합니다.";
+    // The status line shows only while the analysis is loading or when part of it failed; the help popover explains the tree.
+    const status=byId("view-info");
+    status.textContent=qaLoading?"저장된 분석과 원문 근거를 확인하고 있습니다…":qaFailed?"일부 세션의 분석·원문 순서를 불러오지 못했습니다. 새로고침해 다시 확인해 주세요.":"";
+    status.hidden=!status.textContent;
     if(focus) {
       const host=byId(focus.host);
       const target=focus.kind ? [...host.querySelectorAll(".mind-node")].find(node=>node.dataset.kind===focus.kind&&node.dataset.key===focus.key)
@@ -1388,7 +1391,9 @@ if(typeof document !== "undefined") (() => {
   }
   // Narrow screens get tighter levels; crossing that width re-lays the tree, anything else keeps the camera in bounds.
   window.addEventListener("resize",()=>{
-    if(mindPlan && mindPlan.compact!==compactTree())renderMind();
+    // A box that changes shape (a rotated phone, a narrowed window) is fitted afresh around its root, without a glide:
+    // a scroll-into-view that lands mid-glide would be folded into the camera and leave the root out of sight.
+    if(mindPlan && mindPlan.compact!==compactTree()){renderMind();fitTree({},false);}
     else {if(mindPlan){mindCamera=MindTree.clamp(mindCamera,viewSize(),treeSize());applyCamera(false);}scheduleMindDraw();}
   });
   // Pointer gestures on the tree box: one pointer drags, two pinch; a drag never counts as a click on a branch.

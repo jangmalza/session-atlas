@@ -1389,3 +1389,12 @@ test('the menu folds after a project choice or a reset, and the session menu hol
   assert.match(html,/id="mind-tree-host"[\s\S]*id="mind-tree"[\s\S]*id="mind-zoom"[\s\S]*id="mind-fit"/,'the fit button is an overlay inside the tree box');
   assert.doesNotMatch(html,/mind-zoom-in|mind-zoom-out|mind-zoom-level|mind-zoom-reset|class="mind-help"|class="scope-row"/);
 });
+
+test('the mind map is the whole page: no header, status only while loading or failing, overlays inside the canvas',async()=>{
+  const data=fixture(),app=browser({data});await settle();
+  assert.doesNotMatch(html,/viewer-header|FIELD NOTES/);
+  assert.match(html,/id="viewer-menu"[\s\S]*data-ui-theme[\s\S]*id="reset"/,'the theme choice lives in the menu for the standalone page');
+  assert.match(html,/id="mind-canvas"[\s\S]*id="mind-tree-host"[\s\S]*id="mind-zoom"[\s\S]*id="mind-session-notice"[\s\S]*id="view-info"[\s\S]*id="mind-selection"[\s\S]*id="mind-actions"[\s\S]*<\/section>/,'notice, status, path and card are overlays inside the canvas');
+  assert.equal(app.elements.get('view-info').textContent,'','no standing hint under the tree');
+  assert.equal(app.elements.get('view-info').hidden,true);
+});

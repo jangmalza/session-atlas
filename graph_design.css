@@ -133,3 +133,36 @@ svg .node-title{font-size:15px}
  .controls{padding:8px 12px;gap:6px}
  .viewer-help>summary,.viewer-menu>summary{padding:7px 9px;font-size:12px}
 }
+
+/* The mind map is the page: the tree fills the viewer, and every control floats over it or slides in beside it. */
+body.mind-mode{grid-template-rows:minmax(0,1fr)}
+body.mind-mode .controls{position:fixed;top:10px;left:10px;z-index:9;width:min(440px,calc(100vw - 20px));padding:0;gap:6px}
+body.mind-mode .controls input,body.mind-mode .controls>details>summary,body.mind-mode .mind-root-kind,body.mind-mode .mind-tools .node-management>summary{background:var(--panel);box-shadow:0 2px 10px var(--shadow)}
+body.mind-mode .layout{padding:0;gap:0;max-width:none;grid-template-rows:minmax(0,1fr)}
+body.mind-mode.has-source-reader .layout{grid-template-rows:minmax(160px,1fr) minmax(220px,42%);row-gap:0;padding:0}
+body.mind-mode main{max-width:none;padding:0;overflow:hidden;scrollbar-gutter:auto;display:flex;flex-direction:column;min-height:0}
+body.mind-mode #session-mindmap{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
+body.mind-mode #mind-tools{position:fixed;top:10px;right:10px;z-index:8;max-width:calc(100vw - 470px);padding:0;border:0;justify-content:flex-end}
+body.mind-mode .mind-viewport{flex:1 1 auto;min-height:0;padding:58px 0 0}
+body.mind-mode #mind-canvas{position:relative;height:100%;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:minmax(0,1fr) auto}
+body.mind-mode .mind-tree-host{grid-column:1;grid-row:1}
+body.mind-mode .mind-tree-host,body.mind-mode.has-source-reader .mind-tree-host{height:100%;border:0;border-radius:0}
+body.mind-mode #mind-session-notice,body.mind-mode #view-info{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:7;width:max-content;max-width:min(720px,calc(100% - 20px));margin:0;box-shadow:0 4px 16px var(--shadow)}
+body.mind-mode #view-info{padding:6px 12px;background:var(--panel);border:1px solid var(--line);border-radius:6px;font-size:12px}
+/* The path runs along the bottom of the tree and the card docks beside it, so neither ever covers a branch. */
+body.mind-mode #mind-selection{grid-column:1/-1;grid-row:2;margin:0;padding:5px 10px;border:0;border-top:1px solid var(--line);background:var(--panel)}
+body.mind-mode #mind-selection:empty{display:none}
+body.mind-mode #mind-actions{grid-column:2;grid-row:1;width:min(380px,40vw);min-height:0;overflow:auto;margin:0;padding:12px 14px;border-left:1px solid var(--line);background:var(--panel)}
+body.mind-mode #mind-actions:empty{display:none}
+body.mind-mode #mind-actions h2{font-size:16px;margin:8px 0 4px}
+body.mind-mode #mind-actions p{font-size:13px}
+body.mind-mode #mind-actions .session-brief{margin:8px 0 0;padding:10px 12px}
+body.mind-mode #source-reader{border-radius:0;border-left:0;border-right:0;border-bottom:0}
+@media(max-width:700px){
+ body.mind-mode .controls{top:8px;left:8px;right:8px;width:auto}
+ body.mind-mode #mind-tools{top:54px;left:8px;right:8px;max-width:none;justify-content:flex-start}
+ body.mind-mode .mind-viewport{padding-top:128px}
+ body.mind-mode #mind-canvas{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) auto auto}
+ body.mind-mode #mind-actions{grid-column:1;grid-row:2;width:auto;max-height:36vh;border-left:0;border-top:1px solid var(--line)}
+ body.mind-mode #mind-selection{grid-row:3;font-size:11px;padding:4px 8px}
+}
