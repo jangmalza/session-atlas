@@ -250,7 +250,11 @@ def repair_attribution_errors(draft_paths: list[Path], report: dict) -> int:
 
 
 class AnalysisError(RuntimeError):
-    """An analysis failure with a code-owned, safe-to-display message."""
+    """An analysis failure with a code-owned, safe-to-display message and a short code for callers."""
+
+    def __init__(self, message: str, code: str = "stage_failed"):
+        super().__init__(message)
+        self.code = code
 
 
 def _run_analysis_process(command: list[str], *, stage: str, **kwargs):
@@ -305,7 +309,7 @@ def check_with_attribution_repair(script: Path, transcript_path: Path, draft_pat
 
 def auto_analyze(con: sqlite3.Connection, sid: str, root: Path, out: Path, force: bool = False, max_chars: int = 60000,
                  *, topic_classifier: str = "codex", allow_api: bool = False,
-                 topic_confidence: float = 0.85, progress=None) -> str:
+                 topic_confidence: float = 0.85, progress=None, model: str | None = None) -> str:
     if topic_classifier not in ("codex", "decisions"):
         raise ValueError("Unknown topic classifier.")
     if topic_classifier == "decisions":
@@ -397,14 +401,15 @@ def auto_analyze(con: sqlite3.Connection, sid: str, root: Path, out: Path, force
                 + chunk_content
             )
             # npm installs codex.cmd on Windows; launch its resolved path.
-            cmd = [codex_executable, 'exec', '--ephemeral', '--sandbox', 'read-only', '--skip-git-repo-check',
+            # An explicit model overrides the Codex config default, which a signed-in account may not be allowed to use.
+            cmd = [codex_executable, 'exec', *(['-m', model] if model else []), '--ephemeral', '--sandbox', 'read-only', '--skip-git-repo-check',
                    '--output-schema', str(schema.resolve()), '-o', str(draft_path), '-']
             stage = f"chunk {i}/{len(chunks)}: codex exec"
             cp = _run_analysis_process(cmd, stage=stage, input=prompt, text=True, cwd=tmpdir,
                                        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                        encoding="utf-8", errors="replace", timeout=600)
             if cp.returncode != 0 or not draft_path.is_file():
-                raise AnalysisError(f'{stage} failed (exit {cp.returncode}); provider output omitted')
+                raise AnalysisError(f'{stage} failed (exit {cp.returncode}); provider output omitted', code='codex_exec_failed')
             try:
                 normalized = normalize_analysis_output(json.loads(draft_path.read_text(encoding='utf-8')))
                 # Cache an unverified *draft*: every reuse is revalidated below.

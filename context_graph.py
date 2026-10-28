@@ -666,6 +666,7 @@ def options() -> argparse.ArgumentParser:
     ana.add_argument("--session", help="analyze only this session")
     ana.add_argument("--cm-root", type=Path, required=True, help="checkout root of tonitalej/conversation-map")
     ana.add_argument("--allow-model", action="store_true", help="explicitly allow sending session text to Codex model")
+    ana.add_argument("--model", help="Codex model for the analysis (default: the model in the Codex config)")
     ana.add_argument("--force", action="store_true")
     ana.add_argument("--topic-classifier", choices=("codex", "decisions"), default="codex",
                      help="decisions: Codex creates topics, Decisions assigns items; requires --allow-api")
@@ -796,7 +797,7 @@ def main(argv: list[str] | None = None) -> int:
                 try:
                     print(sid, ap.auto_analyze(con,sid,args.cm_root,args.db.parent,args.force,
                         topic_classifier=args.topic_classifier, allow_api=args.allow_api,
-                        topic_confidence=args.topic_confidence))
+                        topic_confidence=args.topic_confidence, model=args.model or None))
                 except ap.AnalysisError as exc:
                     print(f"failed {sid}: {exc}", file=sys.stderr)
                     return 1

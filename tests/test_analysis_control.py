@@ -117,6 +117,31 @@ class ControlTests(unittest.TestCase):
         with self.assertRaises(ControlError) as error:self.controller.submit(self.arguments(),self.graph)
         self.assertEqual(error.exception.code,'job_busy')
 
+    def test_model_setting_is_validated_persisted_and_passed_to_the_analyzer(self):
+        self.assertEqual(self.controller.settings()['codexModel'],'')
+        for bad in [' x','a'*65,'gpt 6','model/x',None,3]:
+            with self.assertRaises(ControlError) as error:self.controller.edit_settings({'action':'save_model','model':bad})
+            self.assertEqual(error.exception.code,'invalid_model')
+        cm_root=self.controller.config()['cmRoot']
+        value=self.controller.edit_settings({'action':'save_model','model':'gpt-6-astra'})
+        self.assertEqual(value['codexModel'],'gpt-6-astra');self.assertEqual(value['cmRoot'],cm_root,'saving a model keeps the map folder')
+        seen={}
+        def analyzer(con,sid,root,out,*,progress,model=None):
+            seen['model']=model;self.analyzer(con,sid,root,out,progress=progress)
+        job=self.controller.submit(self.arguments(),self.graph)
+        self.controller.execute(job['id'],analyzer=analyzer)
+        self.assertEqual(seen['model'],'gpt-6-astra');self.assertEqual(self.controller.status()['state'],'completed')
+        self.assertEqual(self.controller.edit_settings({'action':'save_model','model':''})['codexModel'],'','an empty model falls back to the Codex config')
+
+    def test_codex_failure_reports_its_own_code_without_provider_output(self):
+        def fail(con,sid,root,out,*,progress,**_):
+            raise ap.AnalysisError('chunk 1/1: codex exec failed (exit 1); provider output omitted',code='codex_exec_failed')
+        job=self.controller.submit(self.arguments(),self.graph)
+        self.controller.execute(job['id'],analyzer=fail)
+        status=self.controller.status()
+        self.assertEqual(status['error'],'codex_exec_failed');self.assertEqual(status['failedStage'],'analyzing')
+        self.assertNotIn('exit 1',json.dumps(status))
+
     def test_success_adds_only_selected_analysis_and_survives_new_controller(self):
         before=self.rows();preferences=self.preferences.read_bytes()
         job=self.controller.submit(self.arguments(),self.graph)

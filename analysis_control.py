@@ -128,6 +128,7 @@ class AnalysisControl:
         storage_available = bool(self.credentials.supported)
         auth = read_json(self.root / 'codex-status.json')
         return {'cmRoot': config.get('cmRoot', ''), 'conversationMapReady': cm_ready,
+                'codexModel': config.get('codexModel', '') if isinstance(config.get('codexModel', ''), str) else '',
                 'codexInstalled': shutil.which('codex') is not None,
                 'nodeInstalled': shutil.which('node') is not None,
                 'codexAuth': auth.get('status', 'unchecked'), 'codexCheckedAt': auth.get('at'),
@@ -154,7 +155,13 @@ class AnalysisControl:
                     ap.find_conversation_map(Path(value))
                 except ValueError:
                     raise ControlError('invalid_cm_root') from None
-                write_json(self.root / 'settings.json', {'cmRoot': str(Path(value).resolve())})
+                write_json(self.root / 'settings.json', {**read_json(self.root / 'settings.json'), 'cmRoot': str(Path(value).resolve())})
+            elif action == 'save_model' and set(arguments) == {'action', 'model'}:
+                # Empty means "use the Codex config default"; otherwise a plain model identifier.
+                model = arguments['model']
+                if not isinstance(model, str) or (model and not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,63}', model)):
+                    raise ControlError('invalid_model')
+                write_json(self.root / 'settings.json', {**read_json(self.root / 'settings.json'), 'codexModel': model})
             elif action == 'save_key' and set(arguments) == {'action', 'key'}:
                 key = arguments['key']
                 if not isinstance(key, str) or not 16 <= len(key) <= 2048 or not re.fullmatch(r'[!-~]+', key):
@@ -268,7 +275,7 @@ class AnalysisControl:
             directory = self.root / job_id
             directory.mkdir()
             write_json(directory / 'request.json', {**arguments, 'cmRoot': self.config().get('cmRoot', ''),
-                       'codexHome': str(self.codex_home)})
+                       'codexModel': self.settings()['codexModel'], 'codexHome': str(self.codex_home)})
             write_json(directory / 'graph.json', graph)
             job = {'id': job_id, 'session': arguments['session'], 'mode': mode, 'state': 'queued',
                    'pid': os.getpid(), 'startedAt': time.time()}
@@ -331,7 +338,7 @@ class AnalysisControl:
                         progress('analyzing')
                         # The saved Decisions key is never injected into Codex's environment.
                         (analyzer or ap.auto_analyze)(con, session, Path(request['cmRoot']), self.database.parent,
-                                                     progress=progress)
+                                                     progress=progress, **({'model': request['codexModel']} if request.get('codexModel') else {}))
                     if mode != 'codex':
                         progress('classifying')
                         if classifier:
@@ -368,7 +375,7 @@ class AnalysisControl:
                     live.execute('INSERT INTO analysis_job_results VALUES (?,?,?)',(job_id,session,time.time()))
                 self.update(job_id, 'completed', finishedAt=time.time())
         except Exception as error:
-            code = error.code if isinstance(error, ControlError) else 'stage_failed'
+            code = error.code if isinstance(error, (ControlError, ap.AnalysisError)) else 'stage_failed'
             if owns_job:
                 self.update(job_id, 'failed', error=code, failedStage=stage, finishedAt=time.time())
         finally:
