@@ -11,6 +11,7 @@ import re
 import sqlite3
 import tempfile
 import threading
+import time
 from urllib.parse import parse_qs, urlsplit
 from topic_display import TopicDisplayConflict, set_topic_display, set_session_display, set_item_display
 
@@ -48,7 +49,16 @@ def atomic_write(path: Path, data: bytes) -> bool:
     try:
         with os.fdopen(descriptor, "wb") as stream:
             stream.write(data)
-        os.replace(temporary, path)
+        # Windows refuses to replace a file while a reader (the HTTP handler, a browser fetch) still holds it open;
+        # that lock lasts milliseconds, so wait briefly and try again before giving up and keeping the last file.
+        for attempt in range(8):
+            try:
+                os.replace(temporary, path)
+                break
+            except PermissionError:
+                if attempt == 7:
+                    raise
+                time.sleep(0.05)
     finally:
         temporary.unlink(missing_ok=True)
     return True
