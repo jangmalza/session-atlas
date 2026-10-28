@@ -7,6 +7,7 @@ Model calls still require ``allow_model`` / ``allow_api`` at the call site.
 """
 from __future__ import annotations
 
+import io
 import json
 import math
 import os
@@ -15,6 +16,8 @@ import shutil
 import sqlite3
 import subprocess
 import tempfile
+import threading
+import time
 from pathlib import Path
 
 from context_graph import _VALIDATION_ERROR_CODES, _save_map, digest, now, serialize_transcript, transcript, validate_map_minimal
@@ -257,6 +260,22 @@ class AnalysisError(RuntimeError):
         self.code = code
 
 
+CODEX_TIMEOUT = 1800
+"""Seconds one codex exec chunk may take in all; a chunk that outlives it is ended and reported as codex_timeout."""
+CODEX_IDLE_TIMEOUT = 900
+"""Seconds codex exec may stay silent (no pipe output, no change to the draft file) before it is ended the same way."""
+_POLL_SECONDS = 5.0
+
+
+class _IdleTimeout(subprocess.TimeoutExpired):
+    """The child kept running but wrote nothing to its pipes or watched files for the idle limit."""
+
+
+def _wall_clock() -> float:
+    """Wall-clock seconds. The monotonic clock behind communicate(timeout=...) stands still while the machine sleeps."""
+    return time.time()
+
+
 def _end_process_tree(process) -> None:
     """Windows starts codex through a .cmd shell: ending only the shell leaves the model process and its pipes alive."""
     try:
@@ -267,23 +286,118 @@ def _end_process_tree(process) -> None:
     except (OSError, subprocess.SubprocessError):
         pass
     try:
-        process.communicate(timeout=30)
+        process.wait(timeout=30)
     except (OSError, subprocess.SubprocessError):
         pass
 
 
-def _run(command: list[str], *, input=None, capture_output=False, timeout=None, **kwargs):
-    """subprocess.run with one difference: a timeout ends the child's whole process tree before raising."""
+class _Pipe:
+    """One captured pipe: a daemon reader thread, the bytes it collected and the wall-clock time of the last delivery."""
+
+    def __init__(self, stream):
+        self.stream = stream
+        self.chunks: list[bytes] = []
+        self.last_seen = _wall_clock()
+        self.thread = threading.Thread(target=self._read, daemon=True)
+        self.thread.start()
+
+    def _read(self) -> None:
+        raw = getattr(self.stream, "buffer", self.stream)  # Text mode wraps the pipe; take the bytes as they arrive.
+        read = getattr(raw, "read1", None) or raw.read
+        try:
+            while data := read(65536):
+                self.chunks.append(data)
+                self.last_seen = _wall_clock()
+        except (OSError, ValueError):
+            pass  # The pipe was closed under the reader while the process tree was being ended.
+
+    def output(self):
+        data = b"".join(self.chunks)
+        if isinstance(self.stream, io.TextIOWrapper):  # Decode and translate newlines as communicate() does.
+            return data.decode(self.stream.encoding, self.stream.errors).replace("\r\n", "\n").replace("\r", "\n")
+        return data
+
+
+def _feed_stdin(stream, data) -> None:
+    """Writer thread: send the child its input and close stdin, as communicate() does, off the watchdog's thread."""
+    try:
+        with stream:
+            if data is not None:
+                stream.write(data)
+    except (OSError, ValueError):
+        pass  # The child ended before reading its input; its exit status reports that.
+
+
+def _file_state(path: Path):
+    try:
+        stat = path.stat()
+    except OSError:
+        return None
+    return stat.st_mtime_ns, stat.st_size
+
+
+def _supervise(process, input, timeout, idle_timeout, watch_paths):
+    """Pump the pipes on threads and poll the child until it exits, the deadline passes or it falls silent."""
+    started_wall, started_mono = _wall_clock(), time.monotonic()
+    if process.stdin is not None:
+        threading.Thread(target=_feed_stdin, args=(process.stdin, input), daemon=True).start()
+    stdout = _Pipe(process.stdout) if process.stdout is not None else None
+    stderr = _Pipe(process.stderr) if process.stderr is not None else None
+    pipes = [pipe for pipe in (stdout, stderr) if pipe is not None]
+    files = {Path(path): None for path in watch_paths}
+    last_activity = started_wall
+    while True:
+        exited = process.poll() is not None
+        reading = [pipe for pipe in pipes if pipe.thread.is_alive()]
+        if exited and not reading:
+            break
+        now = _wall_clock()
+        elapsed = max(now - started_wall, time.monotonic() - started_mono)
+        if timeout is not None and elapsed >= timeout:
+            raise subprocess.TimeoutExpired(process.args, timeout)
+        idle = 0.0
+        if idle_timeout is not None:
+            for path, state in files.items():
+                current = _file_state(path)
+                if current != state:
+                    files[path], last_activity = current, now
+            last_activity = max([last_activity, *(pipe.last_seen for pipe in pipes)])
+            idle = now - last_activity
+            if idle >= idle_timeout:
+                raise _IdleTimeout(process.args, idle_timeout)
+        wait = _POLL_SECONDS
+        if timeout is not None:
+            wait = min(wait, timeout - elapsed)
+        if idle_timeout is not None:
+            wait = min(wait, idle_timeout - idle)
+        wait = max(wait, 0.05)
+        if exited:
+            reading[0].thread.join(wait)  # The child is gone, but a grandchild still holds its pipe open.
+        else:
+            try:
+                process.wait(timeout=wait)
+            except subprocess.TimeoutExpired:
+                pass
+    return (stdout.output() if stdout else None, stderr.output() if stderr else None)
+
+
+def _run(command: list[str], *, input=None, capture_output=False, timeout=None, idle_timeout=None, watch_paths=(),
+         **kwargs):
+    """subprocess.run with two differences: the deadline counts wall-clock time, and ending the child ends its tree.
+
+    communicate(timeout=...) measures on the monotonic clock, which stands still while the machine sleeps: a
+    30-minute limit never fired for a codex run that slept through the night and then waited forever on a severed
+    connection. This runner polls every few seconds, applies ``timeout`` to whichever clock advanced further, and, when
+    ``idle_timeout`` is set, also ends a child that wrote nothing to its pipes or to any of ``watch_paths`` for that
+    long. Both end the whole process tree before raising subprocess.TimeoutExpired, as does an interrupt.
+    """
     if capture_output:
         kwargs["stdout"] = kwargs["stderr"] = subprocess.PIPE
     if input is not None:
         kwargs["stdin"] = subprocess.PIPE
     with subprocess.Popen(command, **kwargs) as process:
         try:
-            stdout, stderr = process.communicate(input=input, timeout=timeout)
-        except subprocess.TimeoutExpired:
-            _end_process_tree(process)
-            raise
+            stdout, stderr = _supervise(process, input, timeout, idle_timeout, watch_paths)
         except BaseException:
             _end_process_tree(process)
             raise
@@ -292,11 +406,14 @@ def _run(command: list[str], *, input=None, capture_output=False, timeout=None, 
 
 def _run_analysis_process(command: list[str], *, stage: str, **kwargs):
     """Keep process commands, output and exception payloads out of diagnostics."""
+    code = "codex_timeout" if "codex exec" in stage else "stage_failed"
     try:
         return _run(command, **kwargs)
+    except _IdleTimeout as error:
+        raise AnalysisError(f"{stage} wrote nothing for {error.timeout:.0f} s and was ended; "
+                            "subprocess diagnostics omitted", code=code) from None
     except subprocess.TimeoutExpired:
-        raise AnalysisError(f"{stage} timed out; subprocess diagnostics omitted",
-                            code="codex_timeout" if "codex exec" in stage else "stage_failed") from None
+        raise AnalysisError(f"{stage} timed out; subprocess diagnostics omitted", code=code) from None
     except (OSError, subprocess.SubprocessError):
         raise AnalysisError(f"{stage} could not run; subprocess diagnostics omitted") from None
 
@@ -450,7 +567,8 @@ def auto_analyze(con: sqlite3.Connection, sid: str, root: Path, out: Path, force
             stage = f"chunk {i}/{len(chunks)}: codex exec"
             cp = _run_analysis_process(cmd, stage=stage, input=prompt, text=True, cwd=tmpdir,
                                        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                       encoding="utf-8", errors="replace", timeout=1800)
+                                       encoding="utf-8", errors="replace", timeout=CODEX_TIMEOUT,
+                                       idle_timeout=CODEX_IDLE_TIMEOUT, watch_paths=[draft_path])
             if cp.returncode != 0 or not draft_path.is_file():
                 raise AnalysisError(f'{stage} failed (exit {cp.returncode}); provider output omitted', code='codex_exec_failed')
             try:
