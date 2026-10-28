@@ -114,7 +114,7 @@ class HybridAnalysisTests(unittest.TestCase):
         before=self.tables()
         with patch.dict(os.environ,{'OPENAI_API_KEY':'fake-test-key'}), \
              patch.object(cg.shutil,'which',side_effect=lambda name:name), \
-             patch.object(cg.subprocess,'run',side_effect=self.fake_process), \
+             patch.object(ap,'_run',side_effect=self.fake_process), \
              patch.object(dt,'classify_map',side_effect=lambda source,*a,**kw:self.overlay(source)):
             ap.auto_analyze(self.con,SID,self.root/'cm',self.root,topic_classifier='decisions',allow_api=True)
         saved=json.loads(self.con.execute('SELECT map_json FROM session_maps').fetchone()[0])
@@ -127,7 +127,7 @@ class HybridAnalysisTests(unittest.TestCase):
         before=self.tables()
         with patch.dict(os.environ,{'OPENAI_API_KEY':'fake-test-key'}), \
              patch.object(cg.shutil,'which',side_effect=lambda name:name), \
-             patch.object(cg.subprocess,'run',side_effect=self.fake_process), \
+             patch.object(ap,'_run',side_effect=self.fake_process), \
              patch.object(dt,'classify_map',side_effect=dt.DecisionsError('Synthetic failure')):
             with self.assertRaises(dt.DecisionsError):
                 ap.auto_analyze(self.con,SID,self.root/'cm',self.root,topic_classifier='decisions',allow_api=True)
@@ -137,7 +137,7 @@ class HybridAnalysisTests(unittest.TestCase):
         before=self.tables()
         with patch.dict(os.environ,{'OPENAI_API_KEY':'fake-test-key'}), \
              patch.object(cg.shutil,'which',side_effect=lambda name:name), \
-             patch.object(cg.subprocess,'run',side_effect=self.fake_process), \
+             patch.object(ap,'_run',side_effect=self.fake_process), \
              patch.object(dt,'classify_map',side_effect=lambda source,*a,**kw:self.overlay(source)), \
              patch('topic_overlays.store_overlay',side_effect=RuntimeError('Synthetic save failure')):
             with self.assertRaises(RuntimeError):
