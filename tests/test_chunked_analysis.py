@@ -73,6 +73,9 @@ class ChunkTests(unittest.TestCase):
                 def fake_run(cmd, **kwargs):
                     if cmd[0] == "codex":
                         self.assertIn('Write all generated prose in Korean', kwargs['input'].split('TRANSCRIPT PART:\n', 1)[0])
+                        self.assertEqual((kwargs["timeout"], kwargs["idle_timeout"], kwargs["watch_paths"]),
+                                         (ap.CODEX_TIMEOUT, ap.CODEX_IDLE_TIMEOUT, [Path(cmd[cmd.index("-o") + 1])]),
+                                         "codex exec runs under the overall and idle limits, watching its draft file")
                         data = json.loads(kwargs["input"].split("TRANSCRIPT PART:\n", 1)[1])
                         chunks.append(data)
                         draft = {"schemaVersion": "1", "title": "Demo", "coverage": {"status": "complete"},
