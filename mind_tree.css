@@ -45,15 +45,17 @@ body.has-source-reader .mind-tree-host{height:clamp(220px,34vh,520px)}
 .mind-tools{display:flex;align-items:center;flex-wrap:wrap;gap:6px 8px;padding:7px 0 8px;border-bottom:1px dotted var(--line)}
 .mind-tools .topic-editor,.mind-tools .item-title-action{margin:0;padding:0;border:0}
 .mind-tools .question-stepper{margin:0 0 0 auto;gap:4px}
-#mind-session-change{font-size:12px;color:var(--accent)}
-#mind-session-picker{min-width:0}
-#mind-sessions .mind-node-list{display:grid;gap:8px}
-#mind-sessions .mind-node{display:block;width:100%;margin:0;padding:14px 16px;border:1px solid var(--line);border-left:3px solid transparent;border-radius:6px;background:var(--panel);line-height:1.6;text-align:left}
-#mind-sessions .mind-node[aria-pressed=true]{border-color:var(--accent);border-left-color:var(--accent);background:var(--tint)}
-#mind-sessions .mind-node .name{display:block;font-size:15px;font-weight:600;line-height:1.6;overflow-wrap:anywhere}
-#mind-sessions .paging{margin-top:14px}
-#mind-sessions .paging button{font-size:12px;padding:6px 9px}
-#mind-sessions .paging .hint{font:11px var(--mono)}
+.mind-root-kind{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.mind-root-kind button{border:0;border-radius:0;font-size:12px;padding:5px 10px;background:var(--panel)}
+.mind-root-kind button+button{border-left:1px solid var(--line)}
+.mind-root-kind button[aria-pressed=true]{color:var(--accent);background:var(--tint);font-weight:600}
+#mind-tree .mind-node.kind-week .name,#mind-tree .mind-node.kind-day .name,#mind-tree .mind-node.kind-period .name{font-weight:600}
+.session-brief{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px 18px;margin:10px 0 14px;padding:12px 14px;border:1px solid var(--line);border-radius:6px;background:var(--panel)}
+.session-brief-meta{grid-column:1/-1;margin:0;font:12px/1.6 var(--mono);color:var(--muted);overflow-wrap:anywhere}
+.session-preview{display:block;min-width:0;margin:0;padding:8px 10px;border:1px solid transparent;border-left:2px solid var(--line);border-radius:4px;background:transparent;text-align:left;line-height:1.7}
+button.session-preview{cursor:pointer}button.session-preview:hover{border-color:var(--accent);background:var(--tint)}
+.session-preview-label{display:block;font:11px/1.5 var(--mono);color:var(--accent);margin-bottom:4px}
+.session-preview-text{display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;white-space:pre-wrap;font-size:13px;color:var(--text)}
 #mind-session-notice{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 12px;border-left:3px solid var(--accent);background:var(--tint);font-size:12px;line-height:1.8;margin:8px 0}
 #mind-session-notice button{margin:0;font-size:12px;padding:5px 9px}
 #mind-actions .answer-evidence-preview{display:block;margin:10px 0;padding-left:12px;border-left:2px solid var(--accent);white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.9;color:var(--text)}
@@ -65,5 +67,6 @@ body.has-source-reader .mind-tree-host{height:clamp(220px,34vh,520px)}
  #mind-tree .mind-node{font-size:12px;gap:5px;padding:3px 6px 4px}
  #mind-tree .mind-node .name{font-size:12px}
  .mind-tools{gap:5px 6px}
+ .session-brief{grid-template-columns:minmax(0,1fr)}
  .mind-tools .question-stepper{margin-left:0;flex-basis:100%}
 }
