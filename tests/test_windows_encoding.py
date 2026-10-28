@@ -94,7 +94,7 @@ class WindowsEncodingTests(unittest.TestCase):
                     return subprocess.CompletedProcess(cmd, 0, stdout='', stderr='')
 
                 with patch.object(cg.shutil, 'which', side_effect={'codex': codex_executable, 'node': 'node'}.get), \
-                     patch.object(cg.subprocess, 'run', side_effect=fake_run):
+                     patch.object(ap, "_run", side_effect=fake_run):
                     result = ap.auto_analyze(con, SID, cm, home)
                 self.assertIn('analyzed & imported', result)
                 self.assertEqual([x[0] for x in actions], [codex_executable, 'node', 'node'])

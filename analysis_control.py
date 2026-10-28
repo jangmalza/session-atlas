@@ -129,6 +129,7 @@ class AnalysisControl:
         auth = read_json(self.root / 'codex-status.json')
         return {'cmRoot': config.get('cmRoot', ''), 'conversationMapReady': cm_ready,
                 'codexModel': config.get('codexModel', '') if isinstance(config.get('codexModel', ''), str) else '',
+                'codexReasoning': config.get('codexReasoning', '') if isinstance(config.get('codexReasoning', ''), str) else '',
                 'codexInstalled': shutil.which('codex') is not None,
                 'nodeInstalled': shutil.which('node') is not None,
                 'codexAuth': auth.get('status', 'unchecked'), 'codexCheckedAt': auth.get('at'),
@@ -162,6 +163,12 @@ class AnalysisControl:
                 if not isinstance(model, str) or (model and not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,63}', model)):
                     raise ControlError('invalid_model')
                 write_json(self.root / 'settings.json', {**read_json(self.root / 'settings.json'), 'codexModel': model})
+            elif action == 'save_reasoning' and set(arguments) == {'action', 'reasoning'}:
+                # Empty keeps the Codex config effort; otherwise one of Codex's own effort names.
+                reasoning = arguments['reasoning']
+                if not isinstance(reasoning, str) or (reasoning and not re.fullmatch(r'[a-z]{1,16}', reasoning)):
+                    raise ControlError('invalid_reasoning')
+                write_json(self.root / 'settings.json', {**read_json(self.root / 'settings.json'), 'codexReasoning': reasoning})
             elif action == 'save_key' and set(arguments) == {'action', 'key'}:
                 key = arguments['key']
                 if not isinstance(key, str) or not 16 <= len(key) <= 2048 or not re.fullmatch(r'[!-~]+', key):
@@ -275,7 +282,8 @@ class AnalysisControl:
             directory = self.root / job_id
             directory.mkdir()
             write_json(directory / 'request.json', {**arguments, 'cmRoot': self.config().get('cmRoot', ''),
-                       'codexModel': self.settings()['codexModel'], 'codexHome': str(self.codex_home)})
+                       'codexModel': self.settings()['codexModel'], 'codexReasoning': self.settings()['codexReasoning'],
+                       'codexHome': str(self.codex_home)})
             write_json(directory / 'graph.json', graph)
             job = {'id': job_id, 'session': arguments['session'], 'mode': mode, 'state': 'queued',
                    'pid': os.getpid(), 'startedAt': time.time()}
@@ -338,7 +346,8 @@ class AnalysisControl:
                         progress('analyzing')
                         # The saved Decisions key is never injected into Codex's environment.
                         (analyzer or ap.auto_analyze)(con, session, Path(request['cmRoot']), self.database.parent,
-                                                     progress=progress, **({'model': request['codexModel']} if request.get('codexModel') else {}))
+                                                     progress=progress, **({'model': request['codexModel']} if request.get('codexModel') else {}),
+                                                     **({'reasoning': request['codexReasoning']} if request.get('codexReasoning') else {}))
                     if mode != 'codex':
                         progress('classifying')
                         if classifier:

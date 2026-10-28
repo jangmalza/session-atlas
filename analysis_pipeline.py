@@ -257,14 +257,56 @@ class AnalysisError(RuntimeError):
         self.code = code
 
 
+def _end_process_tree(process) -> None:
+    """Windows starts codex through a .cmd shell: ending only the shell leaves the model process and its pipes alive."""
+    try:
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"], stdin=subprocess.DEVNULL,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30, check=False)
+        process.kill()
+    except (OSError, subprocess.SubprocessError):
+        pass
+    try:
+        process.communicate(timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
+def _run(command: list[str], *, input=None, capture_output=False, timeout=None, **kwargs):
+    """subprocess.run with one difference: a timeout ends the child's whole process tree before raising."""
+    if capture_output:
+        kwargs["stdout"] = kwargs["stderr"] = subprocess.PIPE
+    if input is not None:
+        kwargs["stdin"] = subprocess.PIPE
+    with subprocess.Popen(command, **kwargs) as process:
+        try:
+            stdout, stderr = process.communicate(input=input, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            _end_process_tree(process)
+            raise
+        except BaseException:
+            _end_process_tree(process)
+            raise
+    return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+
+
 def _run_analysis_process(command: list[str], *, stage: str, **kwargs):
     """Keep process commands, output and exception payloads out of diagnostics."""
     try:
-        return subprocess.run(command, **kwargs)
+        return _run(command, **kwargs)
     except subprocess.TimeoutExpired:
-        raise AnalysisError(f"{stage} timed out; subprocess diagnostics omitted") from None
+        raise AnalysisError(f"{stage} timed out; subprocess diagnostics omitted",
+                            code="codex_timeout" if "codex exec" in stage else "stage_failed") from None
     except (OSError, subprocess.SubprocessError):
         raise AnalysisError(f"{stage} could not run; subprocess diagnostics omitted") from None
+
+
+def _codex_command(executable: str, schema: Path, draft_path: Path, model: str | None, reasoning: str | None) -> list[str]:
+    """The exact codex exec invocation: read-only, ephemeral, schema-bound; model and effort only when chosen."""
+    return [executable, 'exec', *(['-m', model] if model else []),
+            *(['-c', f'model_reasoning_effort="{reasoning}"'] if reasoning else []),
+            '--ephemeral', '--sandbox', 'read-only', '--skip-git-repo-check',
+            '--output-schema', str(schema.resolve()), '-o', str(draft_path), '-']
 
 
 def check_with_attribution_repair(script: Path, transcript_path: Path, draft_paths: list[Path]) -> int:
@@ -309,7 +351,8 @@ def check_with_attribution_repair(script: Path, transcript_path: Path, draft_pat
 
 def auto_analyze(con: sqlite3.Connection, sid: str, root: Path, out: Path, force: bool = False, max_chars: int = 60000,
                  *, topic_classifier: str = "codex", allow_api: bool = False,
-                 topic_confidence: float = 0.85, progress=None, model: str | None = None) -> str:
+                 topic_confidence: float = 0.85, progress=None, model: str | None = None,
+                 reasoning: str | None = None) -> str:
     if topic_classifier not in ("codex", "decisions"):
         raise ValueError("Unknown topic classifier.")
     if topic_classifier == "decisions":
@@ -401,13 +444,13 @@ def auto_analyze(con: sqlite3.Connection, sid: str, root: Path, out: Path, force
                 + chunk_content
             )
             # npm installs codex.cmd on Windows; launch its resolved path.
-            # An explicit model overrides the Codex config default, which a signed-in account may not be allowed to use.
-            cmd = [codex_executable, 'exec', *(['-m', model] if model else []), '--ephemeral', '--sandbox', 'read-only', '--skip-git-repo-check',
-                   '--output-schema', str(schema.resolve()), '-o', str(draft_path), '-']
+            # An explicit model or effort overrides the Codex config default, which a signed-in account may not
+            # be allowed to use or which may reason far longer than a bulk analysis needs.
+            cmd = _codex_command(codex_executable, schema, draft_path, model, reasoning)
             stage = f"chunk {i}/{len(chunks)}: codex exec"
             cp = _run_analysis_process(cmd, stage=stage, input=prompt, text=True, cwd=tmpdir,
                                        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                       encoding="utf-8", errors="replace", timeout=600)
+                                       encoding="utf-8", errors="replace", timeout=1800)
             if cp.returncode != 0 or not draft_path.is_file():
                 raise AnalysisError(f'{stage} failed (exit {cp.returncode}); provider output omitted', code='codex_exec_failed')
             try:

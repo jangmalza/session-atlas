@@ -101,7 +101,7 @@ class ChunkTests(unittest.TestCase):
                         raise AssertionError(str(cmd))
                     return type("Process", (), {"returncode": 0, "stderr": "", "stdout": ""})()
 
-                with patch.object(cg.shutil, "which", side_effect=lambda name: name), patch.object(cg.subprocess, "run", side_effect=fake_run):
+                with patch.object(cg.shutil, "which", side_effect=lambda name: name), patch.object(ap, "_run", side_effect=fake_run):
                     result = ap.auto_analyze(con, SID, skill.parents[3], root)
                     self.assertIn("chunk(s)", result)
                     self.assertGreaterEqual(len(chunks), 4)
@@ -136,7 +136,7 @@ class ChunkTests(unittest.TestCase):
                             return type("Process", (), {"returncode": 1, "stderr": "intentional", "stdout": ""})()
                         Path(cmd[cmd.index("-o") + 1]).write_text("{}")
                     return type("Process", (), {"returncode": 0, "stderr": "", "stdout": ""})()
-                with patch.object(cg.shutil, "which", side_effect=lambda name: name), patch.object(cg.subprocess, "run", side_effect=fake_run):
+                with patch.object(cg.shutil, "which", side_effect=lambda name: name), patch.object(ap, "_run", side_effect=fake_run):
                     with self.assertRaisesRegex(RuntimeError, "chunk 2/"):
                         ap.auto_analyze(con, SID, skill.parents[3], root)
                 self.assertEqual(con.execute("SELECT count(*) FROM session_maps").fetchone()[0], 0)

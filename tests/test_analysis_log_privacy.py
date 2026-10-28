@@ -67,7 +67,7 @@ class AnalysisLogPrivacyTests(unittest.TestCase):
                     args.append("--allow-api")
                 with patch.object(cg.shutil, "which", side_effect=lambda name: name), \
                      patch.object(ap, "_decision_preflight"), \
-                     patch.object(cg.subprocess, "run", side_effect=fake_run), \
+                     patch.object(ap, "_run", side_effect=fake_run), \
                      patch("decisions_topics.request_decisions") as api, \
                      redirect_stdout(stdout), redirect_stderr(stderr):
                     self.assertEqual(cg.main(args), 1)
@@ -113,7 +113,7 @@ class AnalysisLogPrivacyTests(unittest.TestCase):
         result = subprocess.CompletedProcess([], 2, json.dumps({"errors": [
             {"code": "relation-unknown-node", "message": PRIVATE, "node": PRIVATE},
             {"code": PRIVATE, "message": PRIVATE}]}), PRIVATE)
-        with patch.object(cg.subprocess, "run", return_value=result):
+        with patch.object(ap, "_run", return_value=result):
             try:
                 ap.check_with_attribution_repair(self.script, self.root / "transcript.json", [draft])
             except RuntimeError as error:
@@ -149,7 +149,7 @@ class AnalysisLogPrivacyTests(unittest.TestCase):
                     return subprocess.CompletedProcess(command, 0, PRIVATE, PRIVATE)
                 stdout, stderr = io.StringIO(), io.StringIO()
                 with patch.object(cg.shutil, "which", side_effect=lambda name: name), \
-                     patch.object(cg.subprocess, "run", side_effect=fake_run) as process, \
+                     patch.object(ap, "_run", side_effect=fake_run) as process, \
                      redirect_stdout(stdout), redirect_stderr(stderr):
                     result = cg.main(["--db", str(self.db), "analyze", "--session", SID,
                                       "--cm-root", str(self.cm), "--allow-model"])
@@ -164,7 +164,7 @@ class AnalysisLogPrivacyTests(unittest.TestCase):
             path.write_text(json.dumps({"nodes": [], "relations": [PRIVATE]}), encoding="utf-8")
         stdout, stderr = io.StringIO(), io.StringIO()
         with patch.object(cg.shutil, "which", side_effect=lambda name: name), \
-             patch.object(cg.subprocess, "run") as process, \
+             patch.object(ap, "_run") as process, \
              patch("decisions_topics.request_decisions") as api, \
              redirect_stdout(stdout), redirect_stderr(stderr):
             result = cg.main(["--db", str(self.db), "analyze", "--session", SID,

@@ -65,7 +65,7 @@ class AttributionRecoveryTests(unittest.TestCase):
                     }], "warnings": []}))
                 return completed(cmd, 0, json.dumps({"ok": True, "errors": [], "warnings": []}))
 
-            with patch.object(cg.subprocess, "run", side_effect=fake_run):
+            with patch.object(ap, "_run", side_effect=fake_run):
                 self.assertEqual(ap.check_with_attribution_repair(temp / "script.mjs", transcript, [draft]), 1)
             self.assertEqual(len(attempts), 2)
             self.assertEqual(json.loads(draft.read_text(encoding="utf-8"))["nodes"][0]["classification"], "user_statement")
@@ -78,7 +78,7 @@ class AttributionRecoveryTests(unittest.TestCase):
             def fake_run(cmd, **kwargs):
                 return completed(cmd, 2, json.dumps({"errors": [{"code": "relation-unknown-node",
                             "message": "not found"}], "warnings": []}))
-            with patch.object(cg.subprocess, "run", side_effect=fake_run):
+            with patch.object(ap, "_run", side_effect=fake_run):
                 with self.assertRaisesRegex(RuntimeError, "relation-unknown-node"):
                     ap.check_with_attribution_repair(temp / "script.mjs", temp / "transcript.json", [draft])
 
@@ -142,7 +142,7 @@ class AttributionRecoveryTests(unittest.TestCase):
                         return completed(cmd)
                     raise AssertionError(f"unexpected command: {cmd}")
 
-                with patch.object(cg.shutil, "which", side_effect=lambda name: name), patch.object(cg.subprocess, "run", side_effect=fake_run):
+                with patch.object(cg.shutil, "which", side_effect=lambda name: name), patch.object(ap, "_run", side_effect=fake_run):
                     with self.assertRaisesRegex(RuntimeError, "relation-unknown-node"):
                         ap.auto_analyze(con, SID, cm, root)
                     previous_count = model_calls[0]

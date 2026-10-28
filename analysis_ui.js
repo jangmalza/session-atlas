@@ -5,7 +5,7 @@
   const settingsDialog=byId('analysis-settings'),runDialog=byId('analysis-run');
   const active=new Set(['queued','backing_up','analyzing','validating','building','classifying','saving']);
   const stages={idle:'대기 중',queued:'분석 대기',backing_up:'기존 데이터 백업 중',analyzing:'Codex 의미 분석 중',validating:'근거 검증 중',building:'분석 결과 생성 중',classifying:'Decisions 주제 배정 중',saving:'검증된 결과 반영 중',completed:'완료 · 화면에 결과를 반영합니다',failed:'실패 · 기존 결과 유지',interrupted:'작업 중단 · 자동 재실행하지 않음'};
-  const errors={invalid_settings:'설정 값을 확인해 주세요.',invalid_cm_root:'Conversation Map 설치 폴더를 확인해 주세요.',invalid_model:'모델 이름은 영문·숫자·점·하이픈으로 64자 이내로 입력하세요.',codex_exec_failed:'Codex 실행이 실패했습니다. 로그인한 계정에서 쓸 수 있는 모델 이름을 분석 설정의 Codex 모델에 지정한 뒤 다시 실행해 주세요.',invalid_key:'키는 공백 없이 16~2,048자의 문자로 입력해 주세요.',key_storage_unavailable:'이 서버에는 키를 저장할 보안 저장소가 없습니다. 서버 환경변수 OPENAI_API_KEY를 사용하세요.',job_busy:'다른 분석이 실행 중입니다. 완료 후 다시 실행하세요.',source_changed:'대화 또는 분석 결과가 변경되었습니다. 대상을 다시 확인하세요.',existing_analysis_preserved:'이미 분석된 세션입니다. 기존 분석은 유지하며 Decisions 주제 배정만 실행할 수 있습니다.',analysis_required:'먼저 Codex 의미 분석이 필요합니다.',setup_required:'Codex CLI·Node.js·Conversation Map 설치 상태를 확인하세요.',check_codex_required:'분석 설정에서 Codex 로그인 상태를 확인하세요.',key_required:'분석 설정에서 Decisions API 키를 등록하세요.',no_messages:'분석할 대화 메시지가 없습니다.',consent_required:'선택한 작업의 전송 범위에 동의해야 합니다.',worker_stopped:'작업 프로세스가 종료되었습니다. 기존 결과는 유지됩니다.',stage_failed:'해당 단계에서 실패했습니다. 설정을 확인한 뒤 명시적으로 다시 실행해 주세요.',operation_failed:'처리하지 못했습니다. 서버 설정이나 보안 저장소 상태를 확인하세요.',settings_unavailable:'설정을 읽지 못했습니다. 서버의 보안 저장소 상태를 확인하세요.'};
+  const errors={invalid_settings:'설정 값을 확인해 주세요.',invalid_cm_root:'Conversation Map 설치 폴더를 확인해 주세요.',invalid_model:'모델 이름은 영문·숫자·점·하이픈으로 64자 이내로 입력하세요.',invalid_reasoning:'추론 강도는 Codex가 아는 이름(low, medium, high 등)이어야 합니다.',codex_timeout:'Codex가 제한 시간(조각당 30분) 안에 끝나지 않았습니다. 분석 설정에서 추론 강도를 낮추거나(medium 권장) 다시 실행해 주세요.',codex_exec_failed:'Codex 실행이 실패했습니다. 로그인한 계정에서 쓸 수 있는 모델 이름을 분석 설정의 Codex 모델에 지정한 뒤 다시 실행해 주세요.',invalid_key:'키는 공백 없이 16~2,048자의 문자로 입력해 주세요.',key_storage_unavailable:'이 서버에는 키를 저장할 보안 저장소가 없습니다. 서버 환경변수 OPENAI_API_KEY를 사용하세요.',job_busy:'다른 분석이 실행 중입니다. 완료 후 다시 실행하세요.',source_changed:'대화 또는 분석 결과가 변경되었습니다. 대상을 다시 확인하세요.',existing_analysis_preserved:'이미 분석된 세션입니다. 기존 분석은 유지하며 Decisions 주제 배정만 실행할 수 있습니다.',analysis_required:'먼저 Codex 의미 분석이 필요합니다.',setup_required:'Codex CLI·Node.js·Conversation Map 설치 상태를 확인하세요.',check_codex_required:'분석 설정에서 Codex 로그인 상태를 확인하세요.',key_required:'분석 설정에서 Decisions API 키를 등록하세요.',no_messages:'분석할 대화 메시지가 없습니다.',consent_required:'선택한 작업의 전송 범위에 동의해야 합니다.',worker_stopped:'작업 프로세스가 종료되었습니다. 기존 결과는 유지됩니다.',stage_failed:'해당 단계에서 실패했습니다. 설정을 확인한 뒤 명시적으로 다시 실행해 주세요.',operation_failed:'처리하지 못했습니다. 서버 설정이나 보안 저장소 상태를 확인하세요.',settings_unavailable:'설정을 읽지 못했습니다. 서버의 보안 저장소 상태를 확인하세요.'};
   let session='',title='',plan=null,job={state:'idle'},serial=0,submitting=false,settingsBusy=false;
   function message(code){return errors[code]||'요청을 처리하지 못했습니다. 설정과 서버 연결을 확인해 주세요.';}
   async function request(path,body){
@@ -31,6 +31,7 @@
     byId('analysis-codex-state').textContent=`Codex ${value.codexInstalled?'설치됨':'미설치'} · ${auth[value.codexAuth]||auth.unchecked} · Node.js ${value.nodeInstalled?'설치됨':'미설치'}`+(value.codexCheckedAt?` · 마지막 확인 ${new Date(value.codexCheckedAt*1000).toLocaleString('ko-KR')}`:'');
     byId('analysis-cm-root').value=value.cmRoot;
     byId('analysis-codex-model').value=value.codexModel||'';
+    byId('analysis-codex-reasoning').value=value.codexReasoning||'';
     byId('analysis-cm-state').textContent=value.conversationMapReady?'Conversation Map 준비됨':'Conversation Map 폴더 설정 필요';
     const sources={windows:'Windows 보안 저장소',keyring:'운영체제 보안 저장소',environment:'서버 환경변수',none:'미등록'};
     const reasons={keyring_missing:'서버에 keyring 패키지를 설치하면 키를 저장할 수 있습니다',keyring_backend_missing:'이 서버에는 사용할 수 있는 보안 저장소 백엔드가 없습니다',unsupported_platform:'이 서버에서는 키 저장을 지원하지 않습니다'};
@@ -82,6 +83,7 @@
   byId('analysis-check-codex').addEventListener('click',()=>edit('check-codex.json',{}));
   byId('analysis-save-path').addEventListener('click',()=>edit('settings.json',{action:'save_path',cmRoot:byId('analysis-cm-root').value}));
   byId('analysis-save-model').addEventListener('click',()=>edit('settings.json',{action:'save_model',model:byId('analysis-codex-model').value.trim()}));
+  byId('analysis-save-reasoning').addEventListener('click',()=>edit('settings.json',{action:'save_reasoning',reasoning:byId('analysis-codex-reasoning').value}));
   byId('analysis-save-key').addEventListener('click',()=>{const key=byId('analysis-api-key').value;byId('analysis-api-key').value='';edit('settings.json',{action:'save_key',key});});
   byId('analysis-delete-key').addEventListener('click',()=>edit('settings.json',{action:'delete_key'}));
   byId('analysis-open-setup').addEventListener('click',openSettings);

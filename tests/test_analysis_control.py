@@ -125,13 +125,20 @@ class ControlTests(unittest.TestCase):
         cm_root=self.controller.config()['cmRoot']
         value=self.controller.edit_settings({'action':'save_model','model':'gpt-6-astra'})
         self.assertEqual(value['codexModel'],'gpt-6-astra');self.assertEqual(value['cmRoot'],cm_root,'saving a model keeps the map folder')
+        for bad in ['Medium','medium high','',None]:
+            if bad=='':continue
+            with self.assertRaises(ControlError) as error:self.controller.edit_settings({'action':'save_reasoning','reasoning':bad})
+            self.assertEqual(error.exception.code,'invalid_reasoning')
+        value=self.controller.edit_settings({'action':'save_reasoning','reasoning':'medium'})
+        self.assertEqual(value['codexReasoning'],'medium');self.assertEqual(value['codexModel'],'gpt-6-astra','saving the effort keeps the model')
         seen={}
-        def analyzer(con,sid,root,out,*,progress,model=None):
-            seen['model']=model;self.analyzer(con,sid,root,out,progress=progress)
+        def analyzer(con,sid,root,out,*,progress,model=None,reasoning=None):
+            seen.update(model=model,reasoning=reasoning);self.analyzer(con,sid,root,out,progress=progress)
         job=self.controller.submit(self.arguments(),self.graph)
         self.controller.execute(job['id'],analyzer=analyzer)
-        self.assertEqual(seen['model'],'gpt-6-astra');self.assertEqual(self.controller.status()['state'],'completed')
+        self.assertEqual(seen,{'model':'gpt-6-astra','reasoning':'medium'});self.assertEqual(self.controller.status()['state'],'completed')
         self.assertEqual(self.controller.edit_settings({'action':'save_model','model':''})['codexModel'],'','an empty model falls back to the Codex config')
+        self.assertEqual(self.controller.edit_settings({'action':'save_reasoning','reasoning':''})['codexReasoning'],'')
 
     def test_codex_failure_reports_its_own_code_without_provider_output(self):
         def fail(con,sid,root,out,*,progress,**_):
