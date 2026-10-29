@@ -900,7 +900,7 @@ if(typeof document !== "undefined") (() => {
       count:topicTitles.length,badge:analysed?null:"대기",data:{analysis:analysed?"ready":"pending",provider:providerOf(row)},
       action:()=>selectSessionBranch(row),enter:()=>rootAtSession(row.id)};
     // A session still awaiting analysis offers it right beside its branch; the dashboard's dialog asks for consent.
-    if(!analysed && !leaf)spec.aside={label:"분석",title:liveCatalog && window.parent!==window?"이 세션의 분석을 시작합니다 (확인 창이 열립니다)":"대시보드에서 분석을 시작할 수 있습니다",
+    if(!analysed)spec.aside={label:"분석",title:liveCatalog && window.parent!==window?"이 세션의 분석을 시작합니다 (확인 창이 열립니다)":"대시보드에서 분석을 시작할 수 있습니다",
       disabled:!liveCatalog || window.parent===window,
       action:()=>{if(mindSession!==row.id)selectSessionBranch(row);byId('explorer-analyze').click();}};
     if(!spec.expanded)spec.hits=countHits([sessionSearchText(row),...topicTitles,...helpers.map(sessionTitle)]);
