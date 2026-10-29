@@ -22,3 +22,20 @@
 #analysis-start:hover{color:var(--on-accent,#fff);border-color:transparent;background:var(--accent,#2444cc)}
 #analysis-start:disabled{opacity:.4;border-style:solid}
 @media(max-width:600px){#analysis-settings,#analysis-run{padding:16px}#analysis-actions{margin-left:auto}}
+/* The run dialog reads top to bottom: what, with which model, how much, what leaves the PC, then one start button and a stage bar. */
+#analysis-session-title{font-size:18px;line-height:1.5}
+#analysis-session-id{margin:4px 0 0;font:11px/1.6 var(--mono,monospace)}
+#analysis-engine{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:-4px 0 10px}
+#analysis-run button.analysis-inline{min-height:0;padding:3px 9px;font-size:12px}
+#analysis-scope{margin:12px 0 4px;font-size:15px;font-weight:600}
+#analysis-transfer{margin:0 0 8px}
+.analysis-more{margin:6px 0 10px;font-size:12px}
+.analysis-more summary{cursor:pointer;color:var(--muted,#666)}
+.analysis-more p{margin:8px 0 0}
+.analysis-stages{display:flex;gap:6px;margin:16px 0 8px;padding:0;list-style:none}
+.analysis-stages li{flex:1;padding:6px 2px;text-align:center;font-size:12px;color:var(--muted,#666);border-bottom:3px solid var(--line,#bbb)}
+.analysis-stages li[data-state=done]{color:var(--accent,#2444cc);border-color:var(--accent,#2444cc)}
+.analysis-stages li[data-state=current]{color:var(--text,#222);font-weight:700;background:var(--tint,#eef);border-color:var(--accent,#2444cc)}
+.analysis-stages li[data-state=failed]{color:#b23b2b;border-color:#b23b2b;font-weight:700}
+#analysis-run-progress{margin-top:14px;padding-top:4px;border-top:1px solid var(--line,#bbb)}
+#analysis-progress{font-size:14px;line-height:1.7}

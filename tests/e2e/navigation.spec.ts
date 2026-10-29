@@ -182,7 +182,7 @@ test('selected-session analysis requires consent and updates only after an isola
   await selectProject(frame,'RawFixture');
   await frame.locator(`#mind-tree .mind-aside[data-for="${raw}"]`).click();
   await expect(frame.locator('#mind-tree [data-kind="session"][aria-pressed="true"]')).toHaveAttribute('data-key',raw);
-  await expect(page.locator('#analysis-session-id')).toHaveText(raw);
+  await expect(page.locator('#analysis-session-id')).toContainText(raw);
   await expect(page.locator('#analysis-start')).toBeDisabled();
   await expect(page.locator('#analysis-blocked')).toContainText('로그인 상태');
   await page.locator('#analysis-open-setup').click();await page.locator('#analysis-check-codex').click();

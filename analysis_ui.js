@@ -6,7 +6,22 @@
   const active=new Set(['queued','backing_up','analyzing','validating','building','classifying','saving']);
   const stages={idle:'대기 중',queued:'분석 대기',backing_up:'기존 데이터 백업 중',analyzing:'Codex 의미 분석 중',validating:'근거 검증 중',building:'분석 결과 생성 중',classifying:'Decisions 주제 배정 중',saving:'검증된 결과 반영 중',completed:'완료 · 화면에 결과를 반영합니다',failed:'실패 · 기존 결과 유지',interrupted:'작업 중단 · 자동 재실행하지 않음'};
   const errors={invalid_settings:'설정 값을 확인해 주세요.',invalid_cm_root:'Conversation Map 설치 폴더를 확인해 주세요.',invalid_model:'모델 이름은 영문·숫자·점·하이픈으로 64자 이내로 입력하세요.',invalid_reasoning:'추론 강도는 Codex가 아는 이름(low, medium, high 등)이어야 합니다.',codex_timeout:'Codex가 제한 시간(조각당 30분) 안에 끝나지 않았습니다. 분석 설정에서 추론 강도를 낮추거나(medium 권장) 다시 실행해 주세요.',codex_exec_failed:'Codex 실행이 실패했습니다. 로그인한 계정에서 쓸 수 있는 모델 이름을 분석 설정의 Codex 모델에 지정한 뒤 다시 실행해 주세요.',invalid_key:'키는 공백 없이 16~2,048자의 문자로 입력해 주세요.',key_storage_unavailable:'이 서버에는 키를 저장할 보안 저장소가 없습니다. 서버 환경변수 OPENAI_API_KEY를 사용하세요.',job_busy:'다른 분석이 실행 중입니다. 완료 후 다시 실행하세요.',source_changed:'대화 또는 분석 결과가 변경되었습니다. 대상을 다시 확인하세요.',existing_analysis_preserved:'이미 분석된 세션입니다. 기존 분석은 유지하며 Decisions 주제 배정만 실행할 수 있습니다.',analysis_required:'먼저 Codex 의미 분석이 필요합니다.',setup_required:'Codex CLI·Node.js·Conversation Map 설치 상태를 확인하세요.',check_codex_required:'분석 설정에서 Codex 로그인 상태를 확인하세요.',key_required:'분석 설정에서 Decisions API 키를 등록하세요.',no_messages:'분석할 대화 메시지가 없습니다.',consent_required:'선택한 작업의 전송 범위에 동의해야 합니다.',worker_stopped:'작업 프로세스가 종료되었습니다. 기존 결과는 유지됩니다.',stage_failed:'해당 단계에서 실패했습니다. 설정을 확인한 뒤 명시적으로 다시 실행해 주세요.',operation_failed:'처리하지 못했습니다. 서버 설정이나 보안 저장소 상태를 확인하세요.',settings_unavailable:'설정을 읽지 못했습니다. 서버의 보안 저장소 상태를 확인하세요.'};
-  let session='',title='',plan=null,job={state:'idle'},serial=0,submitting=false,settingsBusy=false;
+  let session='',title='',plan=null,job={state:'idle'},serial=0,submitting=false,settingsBusy=false,engine=null;
+  // The stage bar shows only the steps the chosen task goes through, in order.
+  const stageLabels={queued:'대기',backing_up:'백업',analyzing:'분석',validating:'검증',building:'정리',classifying:'분류',saving:'저장'};
+  const stagesFor=mode=>mode==='decisions'?['queued','backing_up','classifying','saving']:mode==='hybrid'?['queued','backing_up','analyzing','validating','building','classifying','saving']:['queued','backing_up','analyzing','validating','building','saving'];
+  const failedStageNames={queued:'대기',backing_up:'백업',analyzing:'Codex 분석',validating:'근거 검증',building:'결과 정리',classifying:'주제 분류',saving:'저장'};
+  const untitled=name=>!name||/^(고유 요청 확인 불가|프로젝트 미확정|제목 없음)$/.test(name.trim());
+  function elapsed(seconds){const whole=Math.max(0,Math.floor(seconds)),minutes=Math.floor(whole/60),rest=whole%60;return minutes?`${minutes}분 ${rest}초`:`${rest}초`;}
+  function estimate(characters){const low=Math.max(2,Math.round(characters/12000));return `${low}~${low*2+1}분`;}
+  function renderStages(){
+    const list=byId('analysis-stages'),order=stagesFor(job.mode||byId('analysis-mode').value),done=job.state==='completed';
+    const position=order.indexOf(job.state),failedAt=order.indexOf(job.failedStage);
+    list.replaceChildren(...order.map((stage,index)=>{
+      const item=document.createElement('li');item.textContent=stageLabels[stage];
+      item.dataset.state=done||index<position?'done':job.state==='failed'?(index===failedAt?'failed':index<failedAt?'done':'todo'):index===position?'current':'todo';
+      return item;}));
+  }
   function message(code){return errors[code]||'요청을 처리하지 못했습니다. 설정과 서버 연결을 확인해 주세요.';}
   async function request(path,body){
     const options={cache:'no-store'};
@@ -19,12 +34,21 @@
     const busy=active.has(job.state);
     byId('analysis-start').disabled=submitting||busy||!plan||Boolean(plan.blockedReason)||!byId('analysis-consent').checked;
     byId('analysis-mode').disabled=submitting||busy;
-    byId('analysis-preview-refresh').disabled=submitting||busy;
     byId('analysis-consent').disabled=submitting||busy||!plan||Boolean(plan.blockedReason);
     const status=(stages[job.state]||'상태 확인 중')+(job.state==='analyzing'&&job.chunks?` · ${job.chunk}/${job.chunks} 청크`:'');
     byId('analysis-job-badge').textContent=job.state==='idle'?'':status;
     byId('analysis-job-open').hidden=job.state==='idle';
-    if(job.session===session)byId('analysis-progress').textContent=status+(job.error?' · '+message(job.error):'');
+    const mine=job.session===session&&job.state!=='idle';
+    byId('analysis-run-progress').hidden=!mine;
+    if(mine){
+      renderStages();
+      const since=job.startedAt?elapsed(Date.now()/1000-job.startedAt):'';
+      const text=job.state==='completed'?'완료 · 트리에 반영됐습니다'+(job.finishedAt&&job.startedAt?` · 걸린 시간 ${elapsed(job.finishedAt-job.startedAt)}`:'')
+        :job.state==='failed'?`실패${job.failedStage?' · '+(failedStageNames[job.failedStage]||job.failedStage)+' 단계':''} · ${message(job.error)}`
+        :status+(since?` · 경과 ${since}`:'');
+      byId('analysis-progress').textContent=text;
+      byId('analysis-run-view').hidden=job.state!=='completed';
+    }
   }
   function renderSettings(value){
     const auth={unchecked:'로그인 상태 미확인',ready:'로그인 확인됨',missing:'CLI 설치 필요',login_required:'로그인 필요',unavailable:'상태 확인 실패'};
@@ -63,15 +87,28 @@
         byId('analysis-mode').value='decisions';return preview();
       }
       plan=value;
-      byId('analysis-scope').textContent=`선택한 세션 1개 · 원문 메시지 ${value.messageCount.toLocaleString()}개${value.mode==='decisions'?'':` · 분석 입력 약 ${value.characterCount.toLocaleString()}자`} · ${value.hasAnalysis?'기존 분석 있음':'미분석'}`;
-      byId('analysis-transfer').textContent=value.mode==='decisions'?'전송 범위: 기존 주제 제목·설명과 분석 항목 제목·요약·분류·근거 인용을 Decisions API로 전송합니다.':value.mode==='hybrid'?'전송 범위: 선택한 세션의 사용자·어시스턴트 대화를 Codex에, 생성된 주제·항목·근거 인용을 Decisions API에 전송합니다.':'전송 범위: 선택한 세션의 사용자·어시스턴트 대화를 Codex CLI에 설정된 모델로 전송합니다.';
+      byId('analysis-scope').textContent=`메시지 ${value.messageCount.toLocaleString()}개${value.mode==='decisions'?'':` · 예상 ${estimate(value.characterCount)}`} · ${value.hasAnalysis?'이미 분석한 세션':'아직 분석하지 않은 세션'}`;
+      byId('analysis-transfer').textContent=value.mode==='decisions'
+        ?'보내는 것: 이미 뽑아 둔 주제 제목과 항목 제목·요약·분류·근거 인용을 Decisions API로 보냅니다. 원문 대화는 보내지 않습니다.'
+        :value.mode==='hybrid'
+        ?'보내는 것: 이 세션의 사용자·어시스턴트 대화 전체를 Codex로 보내고, 뽑힌 주제·항목 제목을 Decisions API로 보냅니다. 도구 출력·파일 내용·다른 세션은 보내지 않습니다.'
+        :'보내는 것: 이 세션의 사용자·어시스턴트 대화 전체를 Codex로 보냅니다. 도구 출력·파일 내용·다른 세션은 보내지 않습니다.';
+      renderEngine(value.mode);
       byId('analysis-blocked').textContent=value.blockedReason?message(value.blockedReason):'';
     }catch(error){if(token===serial){byId('analysis-scope').textContent='대상 확인 실패';byId('analysis-blocked').textContent=error.message;}}
     finally{if(token===serial)sync();}
   }
+  // The model line names what the chosen task will actually run with, from the saved settings.
+  function renderEngine(mode){
+    const text=byId('analysis-engine-text');
+    if(mode==='decisions'){text.textContent='Decisions API로 주제를 분류합니다';return;}
+    if(!engine){text.textContent='모델 확인 중…';return;}
+    text.textContent=`Codex 모델 ${engine.codexModel||'(Codex 설정의 기본 모델)'} · 추론 ${engine.codexReasoning||'(Codex 설정 그대로)'}`+(mode==='hybrid'?' · 주제 분류는 Decisions API':'');
+  }
   async function openRun(sid,name){
     if(submitting)return;
-    session=sid;title=name||sid;byId('analysis-session-title').textContent=title;byId('analysis-session-id').textContent=sid;
+    session=sid;title=untitled(name)?'제목 없는 세션':name;byId('analysis-session-title').textContent=title;byId('analysis-session-id').textContent='세션 ID '+sid;
+    request('settings.json').then(value=>{engine=value;renderEngine(byId('analysis-mode').value);}).catch(()=>{engine=null;});
     byId('analysis-mode').value=job.session===sid?job.mode||'codex':'codex';byId('analysis-progress').textContent='';
     if(!runDialog.open)runDialog.showModal();
     await preview(true);
@@ -89,8 +126,8 @@
   byId('analysis-open-setup').addEventListener('click',openSettings);
   byId('analysis-run-close').addEventListener('click',()=>runDialog.close());
   byId('analysis-mode').addEventListener('change',()=>preview());
-  byId('analysis-preview-refresh').addEventListener('click',()=>preview());
   byId('analysis-consent').addEventListener('change',sync);
+  byId('analysis-run-view').addEventListener('click',()=>runDialog.close());
   byId('analysis-job-open').addEventListener('click',()=>{if(job.session)openRun(job.session,job.session===session?title:'선택한 분석 작업');});
   byId('analysis-start').addEventListener('click',async()=>{
     if(byId('analysis-start').disabled)return;
