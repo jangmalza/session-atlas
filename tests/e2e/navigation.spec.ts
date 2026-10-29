@@ -180,8 +180,8 @@ test('selected-session analysis requires consent and updates only after an isola
   await page.goto('/?view=graph');const frame=page.frameLocator('#live-frame');
   const raw='22222222-2222-4222-8222-222222222222';
   await selectProject(frame,'RawFixture');
-  await frame.locator(`#mind-tree [data-kind="session"][data-key="${raw}"]`).click();
-  await ensureOpen(frame.locator('#mind-session-editor>.node-management'));await frame.locator('#explorer-analyze').click();
+  await frame.locator(`#mind-tree .mind-aside[data-for="${raw}"]`).click();
+  await expect(frame.locator('#mind-tree [data-kind="session"][aria-pressed="true"]')).toHaveAttribute('data-key',raw);
   await expect(page.locator('#analysis-session-id')).toHaveText(raw);
   await expect(page.locator('#analysis-start')).toBeDisabled();
   await expect(page.locator('#analysis-blocked')).toContainText('로그인 상태');

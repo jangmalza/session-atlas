@@ -685,6 +685,15 @@ if(typeof document !== "undefined") (() => {
     // The line layer shares the tree's box, so SVG units equal the layout's pixels.
     host.replaceChildren(mindLinks);
     for(const entry of plan.nodes){entry.element=treeElement(entry);host.append(entry.element);}
+    // A branch may carry one small action beside its label (the analyse button of a session awaiting analysis);
+    // it is a sibling, not a child, because a button cannot hold another button.
+    for(const entry of plan.nodes) {
+      const aside=entry.node.aside;if(!aside || entry.node.kind==="note")continue;
+      const control=button(aside.label,event=>{event?.stopPropagation?.();aside.action();},"mind-aside");
+      control.title=aside.title || aside.label;control.dataset.for=entry.node.key;control.disabled=Boolean(aside.disabled);
+      control.style.left=(entry.x+(entry.element.offsetWidth || entry.width)+6)+"px";control.style.top=entry.y+"px";control.style.height=entry.height+"px";
+      host.append(control);
+    }
     host.style.width=plan.width+"px";host.style.height=plan.height+"px";
     plan.compact=compact;mindPlan=plan;
   }
@@ -890,6 +899,10 @@ if(typeof document !== "undefined") (() => {
       title:`${title}\n${row.provider==='claude'?'Claude Code':'Codex'} · ${activity} · ${analysed?(topicTitles.length?"주제 "+topicTitles.length+"개":"분석 있음"):"분석 대기"}${row.messageCount!==undefined?" · 메시지 "+row.messageCount+"개":""}${helpers.length?" · 보조 작업 "+helpers.length+"개":""}${row.displayTitle?" · 표시 이름":row.titleSource==="first_user"?" · 제목은 첫 요청":row.titleSource==="own_request"?" · 제목은 분기 후 요청":""}${preview?"\n"+preview:""}\n세션 ID: ${row.id}\n두 번 누르면 이 세션만 봅니다`,
       count:topicTitles.length,badge:analysed?null:"대기",data:{analysis:analysed?"ready":"pending",provider:providerOf(row)},
       action:()=>selectSessionBranch(row),enter:()=>rootAtSession(row.id)};
+    // A session still awaiting analysis offers it right beside its branch; the dashboard's dialog asks for consent.
+    if(!analysed && !leaf)spec.aside={label:"분석",title:liveCatalog && window.parent!==window?"이 세션의 분석을 시작합니다 (확인 창이 열립니다)":"대시보드에서 분석을 시작할 수 있습니다",
+      disabled:!liveCatalog || window.parent===window,
+      action:()=>{if(mindSession!==row.id)selectSessionBranch(row);byId('explorer-analyze').click();}};
     if(!spec.expanded)spec.hits=countHits([sessionSearchText(row),...topicTitles,...helpers.map(sessionTitle)]);
     if(selfOpen) {
       if(leafTopics)spec.children=open.raw?[note(open.raw.offline?"원문은 실행 중인 뷰어에서 읽을 수 있습니다.":"분석 대기 · 이 세션만 보기로 요청을 펼칩니다.","raw-leaf")]:topicLeaves(row,open.group,open.topics);

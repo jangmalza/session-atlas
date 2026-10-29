@@ -73,5 +73,10 @@ button.session-preview{cursor:pointer}button.session-preview:hover{border-color:
 #mind-tree .mind-node.kind-session[data-provider=codex]:hover,#mind-tree .mind-node.kind-session[data-provider=codex][aria-pressed=true],#mind-tree .mind-node.kind-session.mind-hit[data-provider=codex]{border-left-color:var(--codex-line)}
 #mind-tree .mind-node.kind-session[data-provider=claude]:hover,#mind-tree .mind-node.kind-session[data-provider=claude][aria-pressed=true],#mind-tree .mind-node.kind-session.mind-hit[data-provider=claude]{border-left-color:var(--claude-line)}
 #mind-tree .mind-node.depth-0.kind-session[data-provider]{background:var(--accent);color:var(--on-accent);border-left-width:4px}
+/* The analyse button that sits beside a session branch awaiting analysis. */
+#mind-tree .mind-aside{position:absolute;display:inline-flex;align-items:center;margin:0;padding:0 9px;border:1px solid var(--accent);border-radius:10px;background:var(--panel);color:var(--accent);font:11px/1 var(--mono);white-space:nowrap;cursor:pointer}
+#mind-tree .mind-aside:hover,#mind-tree .mind-aside:focus-visible{background:var(--tint)}
+#mind-tree .mind-aside:disabled{border-style:dashed;color:var(--muted);cursor:not-allowed}
+#mind-tree.searching .mind-aside{opacity:.38}
 .provider-chip{display:inline-block;padding:1px 8px 1px 6px;border-left:3px solid var(--codex-line);border-radius:3px;font:11px/1.6 var(--mono);color:var(--codex-text);background:var(--codex-bg)}
 .provider-chip[data-provider=claude]{color:var(--claude-text);background:var(--claude-bg);border-left-color:var(--claude-line)}

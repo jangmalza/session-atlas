@@ -1413,3 +1413,17 @@ test('session branches and the session card carry their source, Claude Code or C
   app.rootHere();
   assert.equal(app.selected('session').dataset.depth,'0');assert.equal(app.selected('session').dataset.provider,'claude');
 });
+
+test('a session awaiting analysis offers an analyse button beside its branch that selects it and opens the dialog',async()=>{
+  const data=fixture();data.sessions[2].hasAnalysis=false;
+  const app=browser({data,seed:{}});await settle();
+  change(app,'project','test');
+  const asides=app.elements.get('mind-tree').querySelectorAll('.mind-aside');
+  assert.equal(asides.length,1,'only the session without analysis gets the button');
+  assert.equal(asides[0].dataset.for,'session-2');assert.equal(asides[0].textContent,'분석');assert.equal(asides[0].disabled,false);
+  asides[0].click();await settle();
+  assert.equal(app.state().session,'session-2','the button selects its session');
+  const request=app.navigation.find(item=>item?.type==='context-graph-analyze');
+  assert.ok(request,'the dashboard is asked to open the analysis dialog');assert.equal(request.session,'session-2');
+  assert.equal(app.elements.get('mind-tree').querySelectorAll('.mind-aside').length,1,'the selected branch keeps its button');
+});
