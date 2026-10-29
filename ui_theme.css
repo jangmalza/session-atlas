@@ -4,6 +4,8 @@
   --line: #d4d9d0; --accent: #254ee8; --tint: #edf1ff; --on-accent: #fff;
   --grid: #254ee814; --shadow: #1c292012;
   --user: #254ee8; --user-bg: #f0f3ff;
+  --codex-bg: #e3f2fd; --codex-line: #4fc3f7; --codex-text: #0b5aa8;
+  --claude-bg: #fff3e0; --claude-line: #ffb74d; --claude-text: #a4520a;
   --sans: "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
   --mono: "Cascadia Code", Consolas, "Courier New", monospace;
   --serif: Georgia, "Batang", serif;
@@ -14,6 +16,8 @@
   --bg: #131917; --panel: #1b2420; --text: #f0f1e9; --muted: #b4bfb4;
   --line: #3c4b42; --accent: #a6b7ff; --tint: #263651; --on-accent: #10214c;
   --grid: #a6b7ff12; --shadow: #00000033; --user: #b9c6ff; --user-bg: #25324c;
+  --codex-bg: #17304a; --codex-line: #4fa3e0; --codex-text: #9fd3ff;
+  --claude-bg: #3d2a15; --claude-line: #e0953f; --claude-text: #ffcf9a;
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }

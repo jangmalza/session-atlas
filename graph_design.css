@@ -147,7 +147,7 @@ body.mind-mode .mind-viewport{flex:1 1 auto;min-height:0;padding:58px 0 0}
 body.mind-mode #mind-canvas{position:relative;height:100%;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:minmax(0,1fr) auto}
 body.mind-mode .mind-tree-host{grid-column:1;grid-row:1}
 body.mind-mode .mind-tree-host,body.mind-mode.has-source-reader .mind-tree-host{height:100%;border:0;border-radius:0}
-body.mind-mode #mind-session-notice,body.mind-mode #view-info{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:7;width:max-content;max-width:min(720px,calc(100% - 20px));margin:0;box-shadow:0 4px 16px var(--shadow)}
+body.mind-mode #mind-session-notice,body.mind-mode #view-info{position:absolute;top:10px;left:10px;z-index:7;width:max-content;max-width:min(600px,calc(100% - 440px));margin:0;box-shadow:0 4px 16px var(--shadow)}
 body.mind-mode #view-info{padding:6px 12px;background:var(--panel);border:1px solid var(--line);border-radius:6px;font-size:12px}
 /* The path runs along the bottom of the tree and the card docks beside it, so neither ever covers a branch. */
 body.mind-mode #mind-selection{grid-column:1/-1;grid-row:2;margin:0;padding:5px 10px;border:0;border-top:1px solid var(--line);background:var(--panel)}
@@ -165,4 +165,5 @@ body.mind-mode #source-reader{border-radius:0;border-left:0;border-right:0;borde
  body.mind-mode #mind-canvas{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) auto auto}
  body.mind-mode #mind-actions{grid-column:1;grid-row:2;width:auto;max-height:36vh;border-left:0;border-top:1px solid var(--line)}
  body.mind-mode #mind-selection{grid-row:3;font-size:11px;padding:4px 8px}
+ body.mind-mode #mind-session-notice,body.mind-mode #view-info{max-width:calc(100% - 20px)}
 }

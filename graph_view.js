@@ -780,7 +780,7 @@ if(typeof document !== "undefined") (() => {
   function analysedTree(session,group,topics,branch) {
     const title=sessionTitle(session);
     return {kind:"session",key:session.id,label:title,title:`${title}\n누르면 프로젝트 트리로 올라갑니다`,expanded:true,selected:true,
-      children:topicBranches(group,topics,branch),action:leaveSessionRoot};
+      children:topicBranches(group,topics,branch),data:{provider:providerOf(session)},action:leaveSessionRoot};
   }
   // Project root: sessions are numbered branches in recent order; the open one shows its topics or request groups.
   const projectKey=project=>project || "unknown-project";
@@ -826,13 +826,17 @@ if(typeof document !== "undefined") (() => {
     });
     return root;
   }
+  // Where a session came from: branches and the card wear the same colour (sky blue for Codex, light orange for Claude Code).
+  const providerOf=session=>session?.provider==='claude'?'claude':'codex';
+  const providerName=session=>providerOf(session)==='claude'?'Claude Code':'Codex';
   // What the list used to show for a session: provider, project, activity, size, title source and the first/latest requests.
   function sessionBrief(session) {
     const box=el("div","","session-brief"),stamp=activityValue(session);
-    const facts=[session.provider==='claude'?'Claude Code':'Codex',session.project || "프로젝트 미확정",Number.isFinite(stamp)?`최근 ${qaTime.format(new Date(stamp))}`:"활동 시각 미확정",
+    const facts=[providerName(session),session.project || "프로젝트 미확정",Number.isFinite(stamp)?`최근 ${qaTime.format(new Date(stamp))}`:"활동 시각 미확정",
       session.messageCount!==undefined?`메시지 ${session.messageCount}개`:null,session.hasAnalysis===false?"분석 대기":"분석 있음",
       session.displayTitle?"표시 이름":session.titleSource==="first_user"?"제목은 첫 요청":session.titleSource==="own_request"?"제목은 분기 후 요청":null].filter(Boolean);
-    box.append(el("p",facts.join(" · "),"session-brief-meta"));
+    const meta=el("p","","session-brief-meta"),chip=el("span",facts[0],"provider-chip");chip.dataset.provider=providerOf(session);
+    meta.append(chip,el("span"," · "+facts.slice(1).join(" · ")));box.append(meta);
     const previews=session.requestPreviews;
     for(const [key,caption] of [["first",previews?.scope==="own"?"분기 후 첫 요청":"첫 요청"],["latest","최근 요청"]]) {
       const entry=previews?.[key];
@@ -884,7 +888,7 @@ if(typeof document !== "undefined") (() => {
     const helpers=leaf?[]:helpersOf(row),helpersOpen=!leafTopics && helpers.length>0 && mindHelpers===row.id,selfOpen=Boolean(open) && !leaf;
     const spec={kind:"session",key:row.id,number,label:title,expanded:selfOpen || helpersOpen,selected:Boolean(open),children:[],
       title:`${title}\n${row.provider==='claude'?'Claude Code':'Codex'} · ${activity} · ${analysed?(topicTitles.length?"주제 "+topicTitles.length+"개":"분석 있음"):"분석 대기"}${row.messageCount!==undefined?" · 메시지 "+row.messageCount+"개":""}${helpers.length?" · 보조 작업 "+helpers.length+"개":""}${row.displayTitle?" · 표시 이름":row.titleSource==="first_user"?" · 제목은 첫 요청":row.titleSource==="own_request"?" · 제목은 분기 후 요청":""}${preview?"\n"+preview:""}\n세션 ID: ${row.id}\n두 번 누르면 이 세션만 봅니다`,
-      count:topicTitles.length,badge:analysed?null:"대기",data:{analysis:analysed?"ready":"pending"},
+      count:topicTitles.length,badge:analysed?null:"대기",data:{analysis:analysed?"ready":"pending",provider:providerOf(row)},
       action:()=>selectSessionBranch(row),enter:()=>rootAtSession(row.id)};
     if(!spec.expanded)spec.hits=countHits([sessionSearchText(row),...topicTitles,...helpers.map(sessionTitle)]);
     if(selfOpen) {
@@ -1007,7 +1011,7 @@ if(typeof document !== "undefined") (() => {
   }
   function rawTree(session,raw) {
     const title=sessionTitle(session);
-    return {kind:"session",key:session.id,label:title,title:`${title}\n누르면 프로젝트 트리로 올라갑니다`,expanded:true,selected:true,children:rawBranches(session,raw),action:leaveSessionRoot};
+    return {kind:"session",key:session.id,label:title,title:`${title}\n누르면 프로젝트 트리로 올라갑니다`,expanded:true,selected:true,children:rawBranches(session,raw),data:{provider:providerOf(session)},action:leaveSessionRoot};
   }
   function rawBranches(session,raw) {
     const children=[],turns=raw.turns,chosen=raw.chosen;

@@ -65,3 +65,13 @@ button.session-preview{cursor:pointer}button.session-preview:hover{border-color:
  .mind-tools{gap:5px 6px}
  .session-brief{grid-template-columns:minmax(0,1fr)}
 }
+
+/* Session branches wear their source: sky blue for Codex, light orange for Claude Code. A chosen branch keeps the accent outline and text. */
+#mind-tree .mind-node.kind-session[data-provider=codex]{background:var(--codex-bg);border-left:3px solid var(--codex-line)}
+#mind-tree .mind-node.kind-session[data-provider=claude]{background:var(--claude-bg);border-left:3px solid var(--claude-line)}
+#mind-tree .mind-node.kind-session[data-provider]:hover,#mind-tree .mind-node.kind-session[data-provider][aria-pressed=true]{color:var(--accent);border-color:var(--accent)}
+#mind-tree .mind-node.kind-session[data-provider=codex]:hover,#mind-tree .mind-node.kind-session[data-provider=codex][aria-pressed=true],#mind-tree .mind-node.kind-session.mind-hit[data-provider=codex]{border-left-color:var(--codex-line)}
+#mind-tree .mind-node.kind-session[data-provider=claude]:hover,#mind-tree .mind-node.kind-session[data-provider=claude][aria-pressed=true],#mind-tree .mind-node.kind-session.mind-hit[data-provider=claude]{border-left-color:var(--claude-line)}
+#mind-tree .mind-node.depth-0.kind-session[data-provider]{background:var(--accent);color:var(--on-accent);border-left-width:4px}
+.provider-chip{display:inline-block;padding:1px 8px 1px 6px;border-left:3px solid var(--codex-line);border-radius:3px;font:11px/1.6 var(--mono);color:var(--codex-text);background:var(--codex-bg)}
+.provider-chip[data-provider=claude]{color:var(--claude-text);background:var(--claude-bg);border-left-color:var(--claude-line)}

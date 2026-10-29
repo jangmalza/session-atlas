@@ -1398,3 +1398,18 @@ test('the mind map is the whole page: no header, status only while loading or fa
   assert.equal(app.elements.get('view-info').textContent,'','no standing hint under the tree');
   assert.equal(app.elements.get('view-info').hidden,true);
 });
+
+test('session branches and the session card carry their source, Claude Code or Codex',async()=>{
+  const data=fixture();data.sessions[1].provider='claude';
+  const app=browser({data,seed:{}});await settle();
+  change(app,'project','test');
+  const branches=app.nodes('session');
+  assert.equal(branches.find(card=>card.dataset.key==='session-1').dataset.provider,'claude');
+  assert.ok(branches.filter(card=>card.dataset.key!=='session-1').every(card=>card.dataset.provider==='codex'),'sessions without a recorded provider count as Codex');
+  branches.find(card=>card.dataset.key==='session-1').click();
+  const chip=app.elements.get('mind-actions').querySelector('.provider-chip');
+  assert.equal(chip.textContent,'Claude Code');assert.equal(chip.dataset.provider,'claude');
+  assert.match(app.elements.get('mind-actions').querySelector('.session-brief-meta').textContent,/^Claude Code · test/);
+  app.rootHere();
+  assert.equal(app.selected('session').dataset.depth,'0');assert.equal(app.selected('session').dataset.provider,'claude');
+});
